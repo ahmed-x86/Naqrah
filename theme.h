@@ -10,7 +10,7 @@ enum class ThemeMode { Mocha, Latte, ShamelaClassic, Nord, Gruvbox };
 struct ThemeColors {
     QString Base, Text, Surface, Hover;
     QString Accent1, Accent2, Accent3, Accent4, Danger;
-    bool isDark; 
+    bool isDark;
 };
 
 extern const ThemeColors MochaTheme;

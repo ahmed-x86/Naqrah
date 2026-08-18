@@ -104,12 +104,14 @@ jobs:
           host: 'linux'
           arch: 'gcc_64'
 
-      # لازم نحفظ مسار الـ Qt الديسكتوب (Host) دلوقتي، لأن تثبيت نسخة الأندرويد الجاية
-      # هيكتب فوق QT_ROOT_DIR، وCMake محتاج المسار ده صراحةً عشان الـ cross-compile
-      - name: Save Host Qt Path
+      # لقيت إن QT_ROOT_DIR بيطلع فاضي في نسخة v3 من الأداة دي أحياناً (باگ معروف وموثّق في المشروع نفسه)
+      # فبدل ما نعتمد عليه، هنحسب المسار يدوياً بنفسنا، لأننا عارفين بالظبط
+      # إزاي الأداة بتنظم المجلدات (المسار الافتراضي = مجلد واحد فوق الريبو + Qt/{version}/{arch})
+      - name: Compute Host Qt Path
         run: |
-          echo "QT_HOST_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
-          echo ">>> Host Qt path is: $QT_ROOT_DIR"
+          HOST_QT_PATH="$(dirname "$GITHUB_WORKSPACE")/Qt/6.5.3/gcc_64"
+          echo "QT_HOST_PATH=$HOST_QT_PATH" >> $GITHUB_ENV
+          echo ">>> Computed host Qt path: $HOST_QT_PATH"
 
       # تثبيت Qt للأندرويد مع السماح للأداة بضبط الـ NDK والـ SDK المناسب تلقائياً دون تعارض
       - name: Setup Qt for Android
@@ -119,15 +121,15 @@ jobs:
           target: 'android'
           arch: 'android_arm64_v8a'
 
-      # خطوة تأكيد بس: لو دي فشلت أو طبعت فاضي، يبقى المشكلة إن القيمة مش واصلة أصلاً
+      # خطوة تأكيد بس: بتتحقق إن المسار المحسوب فيه qmake فعلاً قبل ما نكمل
       - name: Verify QT_HOST_PATH
         run: |
           echo ">>> QT_HOST_PATH = $QT_HOST_PATH"
-          if [ -z "$QT_HOST_PATH" ]; then
-            echo "::error::QT_HOST_PATH فاضي! خطوة Save Host Qt Path متبنتش صح."
+          if [ ! -x "$QT_HOST_PATH/bin/qmake" ]; then
+            echo "::error::مفيش qmake في $QT_HOST_PATH — المسار غلط، لازم نراجع اسم النسخة/الـarch"
+            find "$(dirname "$GITHUB_WORKSPACE")" -maxdepth 3 -iname "qmake" 2>/dev/null
             exit 1
           fi
-          ls "$QT_HOST_PATH/bin/qmake" || (echo "::error::مفيش qmake في المسار ده، المسار غلط" && exit 1)
 
       - name: Build APK
         run: |

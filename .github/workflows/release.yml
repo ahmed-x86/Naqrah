@@ -39,6 +39,7 @@ jobs:
           version: '6.5.3'
           host: ${{ matrix.qt_host }}
           arch: ${{ matrix.qt_arch }}
+          extra: '--base https://download.qt.io'
 
       - name: Build Project (Windows)
         if: runner.os == 'Windows'
@@ -103,6 +104,7 @@ jobs:
           version: '6.5.3'
           host: 'linux'
           arch: 'gcc_64'
+          extra: '--base https://download.qt.io'
 
       # لقيت إن QT_ROOT_DIR بيطلع فاضي في نسخة v3 من الأداة دي أحياناً (باگ معروف وموثّق في المشروع نفسه)
       # فبدل ما نعتمد عليه، هنحسب المسار يدوياً بنفسنا، لأننا عارفين بالظبط
@@ -114,12 +116,15 @@ jobs:
           echo ">>> Computed host Qt path: $HOST_QT_PATH"
 
       # تثبيت Qt للأندرويد مع السماح للأداة بضبط الـ NDK والـ SDK المناسب تلقائياً دون تعارض
+      # extra: '--base ...' بيجبر التحميل يستخدم سيرفر Qt الرسمي بدل الميررات الفرعية
+      # اللي بتقع أحياناً بمشاكل شهادة SSL زي اللي حصلت هنا (ftp1.nluug.nl)
       - name: Setup Qt for Android
         uses: jurplel/install-qt-action@v3
         with:
           version: '6.5.3'
           target: 'android'
           arch: 'android_arm64_v8a'
+          extra: '--base https://download.qt.io'
 
       # خطوة تأكيد بس: بتتحقق إن المسار المحسوب فيه qmake فعلاً قبل ما نكمل
       - name: Verify QT_HOST_PATH

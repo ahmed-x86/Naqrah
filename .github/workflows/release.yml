@@ -21,7 +21,7 @@ jobs:
             artifact: Naqrah-Linux
           - os: windows-latest
             qt_host: windows
-            qt_arch: win64_mingw # استخدام مترجم MinGW بدلاً من MSVC
+            qt_arch: win64_mingw
             artifact: Naqrah-Windows
 
     runs-on: ${{ matrix.os }}
@@ -40,21 +40,30 @@ jobs:
           host: ${{ matrix.qt_host }}
           arch: ${{ matrix.qt_arch }}
 
-      - name: Build Project
+      - name: Build Project (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir build
+          cd build
+          # إجبار CMake على استخدام مترجم MinGW بدلاً من MSVC
+          cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+          cmake --build .
+
+      - name: Build Project (Linux)
+        if: runner.os == 'Linux'
         run: |
           mkdir build
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release
-          cmake --build . --config Release
+          cmake --build .
 
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path Naqrah-Windows
-          $exe = if (Test-Path "build\Release\Naqrah.exe") { "build\Release\Naqrah.exe" } else { "build\Naqrah.exe" }
+          $exe = if (Test-Path "build\Naqrah.exe") { "build\Naqrah.exe" } else { "build\Release\Naqrah.exe" }
           Copy-Item $exe -Destination Naqrah-Windows\
-          # إضافة --compiler-runtime لسحب ملفات C++ الخاصة بـ MinGW
           windeployqt --compiler-runtime Naqrah-Windows\Naqrah.exe
           Compress-Archive -Path Naqrah-Windows -DestinationPath Naqrah-Windows.zip
 
@@ -89,7 +98,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # إجبار السيرفر على حذف إصدار 36 المسبب للمشكلة وتثبيت 33
       - name: Force Android API 33 (Fix Gradle API 36 error)
         run: |
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.2"
@@ -114,7 +122,8 @@ jobs:
         run: |
           mkdir build
           cd build
-          /home/runner/work/Naqrah/Qt/6.5.3/android_arm64_v8a/bin/qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH=/home/runner/work/Naqrah/Qt/6.5.3/gcc_64
+          # توجيه البناء لاستخدام NDK 25 المتوافق مع Qt 6.5 بدلاً من NDK 27 الافتراضي
+          /home/runner/work/Naqrah/Qt/6.5.3/android_arm64_v8a/bin/qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH=/home/runner/work/Naqrah/Qt/6.5.3/gcc_64 -DANDROID_PLATFORM=android-33 -DQT_ANDROID_TARGET_SDK_VERSION=33 -DANDROID_NDK=$ANDROID_HOME/ndk/25.2.9519653
           cmake --build .
 
       - name: Find and Copy APK

@@ -161,12 +161,17 @@ jobs:
           echo ">>> المنصات المتبقية:"
           ls "$ANDROID_SDK_ROOT/platforms"
 
+      # مشكلة رابعة: بنينا نسخة "Release" من الأندرويد، والنسخة دي محتاجة توقيع (signing)
+      # صريح وإلا الأندرويد يرفضها بـ"الحزمة تبدو غير صالحة" (وده اللي حصل بالظبط).
+      # مؤقتاً هنبني نسخة "Debug" بدل كده، لأنها بتتوقّع تلقائياً بمفتاح debug
+      # افتراضي وتتثبت عادي على أي جهاز — كويسة للتجربة، لكن مش مناسبة لنشر رسمي.
+      # لما تكون جاهز تنشر بجد، هنعمل keystore حقيقي ونوقّع بيه نسخة الـRelease.
       - name: Build APK
         run: |
           mkdir build
           cd build
           # لازم نمرر QT_HOST_PATH صراحةً، وإلا CMake مش هيلاقي أدوات الـ host (moc/rcc/androiddeployqt)
-          qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH="$QT_HOST_PATH"
+          qt-cmake .. -DCMAKE_BUILD_TYPE=Debug -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH="$QT_HOST_PATH"
           cmake --build .
           # target الـ apk مش جزء من البناء الافتراضي في Qt6، لازم نطلبه صراحةً
           cmake --build . --target apk

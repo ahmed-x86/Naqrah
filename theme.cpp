@@ -5,6 +5,7 @@
 #include <QCheckBox>
 #include <QLabel>
 #include <QColorDialog>
+#include <QFrame>
 
 const ThemeColors MochaTheme = {
     "#1e1e2e", "#cdd6f4", "#313244", "#45475a",
@@ -38,23 +39,26 @@ const ThemeColors GruvboxTheme = {
 
 ThemeSelectionDialog::ThemeSelectionDialog(QWidget* parent) : QDialog(parent) {
     setWindowTitle("اختر المظهر");
-    setMinimumSize(300, 400); 
+    setMinimumSize(300, 420);
     setLayoutDirection(Qt::RightToLeft);
 
     auto* layout = new QVBoxLayout(this);
-    
+    layout->setSpacing(10);
+    layout->setContentsMargins(20, 20, 20, 20);
+
     QStringList themes = {
-        "☕ Mocha", 
-        "☀️ Latte", 
-        "📜 Shamela Classic", 
-        "❄️ Nord", 
-        "📦 Gruvbox", 
+        "☕ Mocha",
+        "☀️ Latte",
+        "📜 Shamela Classic",
+        "❄️ Nord",
+        "📦 Gruvbox",
         "🎨 مخصص (Custom)"
     };
-    
+
     for (int i = 0; i < themes.size(); ++i) {
         auto* btn = new QPushButton(themes[i], this);
-        btn->setFixedHeight(50); 
+        btn->setObjectName("btnThemeChoice");
+        btn->setMinimumHeight(50);
         btn->setCursor(Qt::PointingHandCursor);
         connect(btn, &QPushButton::clicked, this, [this, i]() {
             selectedTheme = i;
@@ -64,21 +68,24 @@ ThemeSelectionDialog::ThemeSelectionDialog(QWidget* parent) : QDialog(parent) {
     }
 }
 
-CustomThemeDialog::CustomThemeDialog(const ThemeColors& initialColors, QWidget* parent) 
+CustomThemeDialog::CustomThemeDialog(const ThemeColors& initialColors, QWidget* parent)
     : QDialog(parent), m_colors(initialColors) {
-    
+
     setWindowTitle("تخصيص الألوان");
-    setMinimumSize(320, 500); 
+    setMinimumSize(340, 500);
     setLayoutDirection(Qt::RightToLeft);
 
     auto* mainLayout = new QVBoxLayout(this);
+    mainLayout->setContentsMargins(16, 16, 16, 16);
+    mainLayout->setSpacing(12);
 
     auto* scrollArea = new QScrollArea(this);
     scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame); 
-    
+    scrollArea->setFrameShape(QFrame::NoFrame);
+
     auto* scrollWidget = new QWidget(scrollArea);
     auto* scrollLayout = new QVBoxLayout(scrollWidget);
+    scrollLayout->setSpacing(10);
 
     addColorRow(scrollLayout, "الخلفية الأساسية (Base)", &m_colors.Base);
     addColorRow(scrollLayout, "لون الواجهة/الأزرار (Surface)", &m_colors.Surface);
@@ -90,9 +97,9 @@ CustomThemeDialog::CustomThemeDialog(const ThemeColors& initialColors, QWidget* 
     addColorRow(scrollLayout, "اللون المميز 4 (Accent 4)", &m_colors.Accent4);
     addColorRow(scrollLayout, "لون التحذير/الخطر (Danger)", &m_colors.Danger);
 
-    auto* chkDark = new QCheckBox("المظهر داكن", this);
+    auto* chkDark = new QCheckBox("المظهر داكن (يؤثر على شفافية التوهج)", this);
     chkDark->setChecked(m_colors.isDark);
-    chkDark->setStyleSheet("font-weight: bold; margin-top: 10px;");
+    chkDark->setStyleSheet("font-weight: 600; margin-top: 8px;");
     connect(chkDark, &QCheckBox::toggled, this, [this](bool checked){ m_colors.isDark = checked; });
     scrollLayout->addWidget(chkDark);
 
@@ -101,12 +108,15 @@ CustomThemeDialog::CustomThemeDialog(const ThemeColors& initialColors, QWidget* 
     mainLayout->addWidget(scrollArea);
 
     auto* btnLayout = new QHBoxLayout();
-    auto* btnSave = new QPushButton("تطبيق", this);
+    btnLayout->setSpacing(10);
+    auto* btnSave = new QPushButton("تطبيق الألوان", this);
     auto* btnCancel = new QPushButton("إلغاء", this);
-    
-    btnSave->setFixedHeight(45); btnSave->setCursor(Qt::PointingHandCursor);
-    btnCancel->setFixedHeight(45); btnCancel->setCursor(Qt::PointingHandCursor);
-    
+
+    btnSave->setObjectName("btnDialogPrimary");
+    btnCancel->setObjectName("btnDialogSecondary");
+    btnSave->setMinimumHeight(48); btnSave->setCursor(Qt::PointingHandCursor);
+    btnCancel->setMinimumHeight(48); btnCancel->setCursor(Qt::PointingHandCursor);
+
     connect(btnSave, &QPushButton::clicked, this, &QDialog::accept);
     connect(btnCancel, &QPushButton::clicked, this, &QDialog::reject);
 
@@ -117,22 +127,23 @@ CustomThemeDialog::CustomThemeDialog(const ThemeColors& initialColors, QWidget* 
 
 void CustomThemeDialog::addColorRow(QVBoxLayout* layout, const QString& labelText, QString* colorRef) {
     auto* row = new QHBoxLayout();
+    row->setSpacing(10);
     auto* lbl = new QLabel(labelText, this);
-    lbl->setStyleSheet("font-weight: bold; font-size: 13px;");
-    
+    lbl->setStyleSheet("font-weight: 600; font-size: 13px;");
+
     auto* btnColor = new QPushButton(this);
-    btnColor->setFixedSize(50, 35);
+    btnColor->setFixedSize(60, 36);
     btnColor->setCursor(Qt::PointingHandCursor);
-    btnColor->setStyleSheet(QString("background-color: %1; border: 2px solid #777; border-radius: 6px;").arg(*colorRef));
-    
+    btnColor->setStyleSheet(QString("background-color: %1; border: 2px solid rgba(127,127,127,0.4); border-radius: 8px;").arg(*colorRef));
+
     connect(btnColor, &QPushButton::clicked, this, [this, btnColor, colorRef]() {
         QColor c = QColorDialog::getColor(QColor(*colorRef), this, "اختر لوناً", QColorDialog::ShowAlphaChannel);
         if (c.isValid()) {
-            *colorRef = c.name(QColor::HexArgb); 
-            btnColor->setStyleSheet(QString("background-color: %1; border: 2px solid #777; border-radius: 6px;").arg(*colorRef));
+            *colorRef = c.name(QColor::HexArgb);
+            btnColor->setStyleSheet(QString("background-color: %1; border: 2px solid rgba(127,127,127,0.4); border-radius: 8px;").arg(*colorRef));
         }
     });
-    
+
     row->addWidget(lbl);
     row->addStretch();
     row->addWidget(btnColor);

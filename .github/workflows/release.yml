@@ -1,0 +1,137 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*' # السكربت يعمل تلقائياً عند دفع Tag جديد يبدأ بحرف v (مثال: v1.0)
+  workflow_dispatch: # يسمح لك بتشغيل السكربت يدوياً من تبويب Actions في GitHub
+
+permissions:
+  contents: write # إعطاء الصلاحيات للسكربت لإنشاء Release ورفع الملفات
+
+jobs:
+  build-desktop:
+    name: Build on ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            qt_host: linux
+            qt_arch: gcc_64
+            artifact: Naqrah-Linux
+          - os: windows-latest
+            qt_host: windows
+            qt_arch: win64_msvc2019_64
+            artifact: Naqrah-Windows
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev
+
+      - name: Setup Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.5.3'
+          host: ${{ matrix.qt_host }}
+          arch: ${{ matrix.qt_arch }}
+          modules: 'qtbase'
+
+      - name: Build Project
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --config Release
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path Naqrah-Windows
+          $exe = if (Test-Path "build\Release\Naqrah.exe") { "build\Release\Naqrah.exe" } else { "build\Naqrah.exe" }
+          Copy-Item $exe -Destination Naqrah-Windows\
+          windeployqt Naqrah-Windows\Naqrah.exe
+          Compress-Archive -Path Naqrah-Windows -DestinationPath Naqrah-Windows.zip
+
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir Naqrah-Linux
+          cp build/Naqrah Naqrah-Linux/
+          tar -czvf Naqrah-Linux.tar.gz Naqrah-Linux
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            *.zip
+            *.tar.gz
+
+  build-android:
+    name: Build on Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Qt for Android
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.5.3'
+          target: 'android'
+          arch: 'android_arm64_v8a'
+          modules: 'qtbase'
+
+      - name: Build APK
+        run: |
+          mkdir build
+          cd build
+          qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a
+          cmake --build .
+
+      - name: Find and Copy APK
+        run: |
+          find build -name "*.apk" -exec cp {} Naqrah-Android-arm64-v8a.apk \;
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Android
+          path: Naqrah-Android-arm64-v8a.apk
+
+  release:
+    name: Create GitHub Release
+    needs: [build-desktop, build-android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

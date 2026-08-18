@@ -107,7 +107,9 @@ jobs:
       # لازم نحفظ مسار الـ Qt الديسكتوب (Host) دلوقتي، لأن تثبيت نسخة الأندرويد الجاية
       # هيكتب فوق QT_ROOT_DIR، وCMake محتاج المسار ده صراحةً عشان الـ cross-compile
       - name: Save Host Qt Path
-        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
+        run: |
+          echo "QT_HOST_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
+          echo ">>> Host Qt path is: $QT_ROOT_DIR"
 
       # تثبيت Qt للأندرويد مع السماح للأداة بضبط الـ NDK والـ SDK المناسب تلقائياً دون تعارض
       - name: Setup Qt for Android
@@ -116,6 +118,16 @@ jobs:
           version: '6.5.3'
           target: 'android'
           arch: 'android_arm64_v8a'
+
+      # خطوة تأكيد بس: لو دي فشلت أو طبعت فاضي، يبقى المشكلة إن القيمة مش واصلة أصلاً
+      - name: Verify QT_HOST_PATH
+        run: |
+          echo ">>> QT_HOST_PATH = $QT_HOST_PATH"
+          if [ -z "$QT_HOST_PATH" ]; then
+            echo "::error::QT_HOST_PATH فاضي! خطوة Save Host Qt Path متبنتش صح."
+            exit 1
+          fi
+          ls "$QT_HOST_PATH/bin/qmake" || (echo "::error::مفيش qmake في المسار ده، المسار غلط" && exit 1)
 
       - name: Build APK
         run: |

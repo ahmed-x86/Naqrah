@@ -39,9 +39,17 @@ jobs:
           version: '6.5.3'
           host: ${{ matrix.qt_host }}
           arch: ${{ matrix.qt_arch }}
-          # تم حذف modules: 'qtbase' هنا لتجنب خطأ aqtinstall
 
-      - name: Build Project
+      - name: Build Project (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="/EHsc /Zc:__cplusplus" -DCMAKE_CXX_STANDARD=17
+          cmake --build . --config Release
+
+      - name: Build Project (Linux)
+        if: runner.os == 'Linux'
         run: |
           mkdir build
           cd build
@@ -89,8 +97,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # أضفنا هذه الخطوة: أندرويد يحتاج لأدوات سطح المكتب أولاً
-      - name: Setup Qt Desktop (Required for Android Tools)
+      - name: Setup Qt Desktop (Host tools)
         uses: jurplel/install-qt-action@v3
         with:
           version: '6.5.3'
@@ -103,13 +110,14 @@ jobs:
           version: '6.5.3'
           target: 'android'
           arch: 'android_arm64_v8a'
+          set-env: false # لمنع تداخل المتغيرات البيئية بين نسخة لينكس ونسخة الأندرويد
 
       - name: Build APK
         run: |
           mkdir build
           cd build
-          # مسار qt-cmake يتم التعرف عليه تلقائياً بعد الخطوات السابقة
-          qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a
+          # توجيه أداة qt-cmake لمسار أدوات الـ Host الخاصة بنسخة لينكس
+          /home/runner/work/Naqrah/Qt/6.5.3/android_arm64_v8a/bin/qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH=/home/runner/work/Naqrah/Qt/6.5.3/gcc_64
           cmake --build .
 
       - name: Find and Copy APK

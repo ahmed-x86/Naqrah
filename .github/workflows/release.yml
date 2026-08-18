@@ -139,13 +139,19 @@ jobs:
       # مشكلة تالتة: aapt2 اللي بييجي مع قالب Qt (AGP 7.4.1 قديمة) مش قادر يقرأ
       # جدول الموارد (resources.arsc) بتاع أندرويد 34+ الجديد، وبيدي خطأ
       # "RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data".
-      # الحل: نشيل أي platform أحدث من android-33 من الـSDK، عشان الأداة
-      # تختار تلقائياً أعلى نسخة متوافقة (33) بدل ما تختار أحدث نسخة متعارضة
+      # غلطة المرة اللي فاتت: شلنا المنصة الوحيدة (36-ext19) من غير ما نركّب
+      # بديل، فبقى مفيش platforms خالص. دلوقتي هنركّب android-33 صراحةً
+      # الأول (نفس النسخة اللي AGP 7.4.1 متوافقة معاها زي ما اللوج قال)،
+      # وبعدين نشيل أي حاجة أحدث منها بس.
       - name: Pin Android platform to a stable SDK level
         run: |
+          echo ">>> Installing platforms;android-33 explicitly..."
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platforms;android-33" "build-tools;33.0.2"
+
           for d in "$ANDROID_SDK_ROOT"/platforms/android-*; do
             [ -d "$d" ] || continue
             base=$(basename "$d")
+            [ "$base" = "android-33" ] && continue
             num=$(echo "$base" | grep -oP '(?<=android-)[0-9]+' | head -1)
             if [ -n "$num" ] && [ "$num" -gt 33 ]; then
               echo "Removing incompatible platform: $base"

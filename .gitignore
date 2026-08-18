@@ -9,3 +9,4 @@ Makefile
 build-win.sh
 build-win
 Naqrah.elf
+Naqrah_autogen

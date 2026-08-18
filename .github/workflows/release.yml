@@ -45,7 +45,6 @@ jobs:
         run: |
           mkdir build
           cd build
-          # إجبار CMake على استخدام مترجم MinGW بدلاً من MSVC
           cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
           cmake --build .
 
@@ -97,11 +96,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Force Android API 33 (Fix Gradle API 36 error)
-        run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.2"
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --uninstall "platforms;android-36" "platforms;android-36-ext19" || true
+        with:
+          packages: 'ndk;25.2.9519653 platforms;android-29 build-tools;33.0.2' # تثبيت الأدوات الصحيحة عبر الأكشن بدلاً من السكربت اليدوي
 
       - name: Setup Qt Desktop (Host tools)
         uses: jurplel/install-qt-action@v3
@@ -122,8 +118,8 @@ jobs:
         run: |
           mkdir build
           cd build
-          # توجيه البناء لاستخدام NDK 25 المتوافق مع Qt 6.5 بدلاً من NDK 27 الافتراضي
-          /home/runner/work/Naqrah/Qt/6.5.3/android_arm64_v8a/bin/qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH=/home/runner/work/Naqrah/Qt/6.5.3/gcc_64 -DANDROID_PLATFORM=android-33 -DQT_ANDROID_TARGET_SDK_VERSION=33 -DANDROID_NDK=$ANDROID_HOME/ndk/25.2.9519653
+          # استخدام NDK 25 واستهداف Android 10 (API 29)
+          /home/runner/work/Naqrah/Qt/6.5.3/android_arm64_v8a/bin/qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH=/home/runner/work/Naqrah/Qt/6.5.3/gcc_64 -DANDROID_PLATFORM=android-29 -DQT_ANDROID_TARGET_SDK_VERSION=29 -DANDROID_NDK=$ANDROID_SDK_ROOT/ndk/25.2.9519653
           cmake --build .
 
       - name: Find and Copy APK

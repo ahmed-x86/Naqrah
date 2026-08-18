@@ -104,6 +104,11 @@ jobs:
           host: 'linux'
           arch: 'gcc_64'
 
+      # لازم نحفظ مسار الـ Qt الديسكتوب (Host) دلوقتي، لأن تثبيت نسخة الأندرويد الجاية
+      # هيكتب فوق QT_ROOT_DIR، وCMake محتاج المسار ده صراحةً عشان الـ cross-compile
+      - name: Save Host Qt Path
+        run: echo "QT_HOST_PATH=$QT_ROOT_DIR" >> $GITHUB_ENV
+
       # تثبيت Qt للأندرويد مع السماح للأداة بضبط الـ NDK والـ SDK المناسب تلقائياً دون تعارض
       - name: Setup Qt for Android
         uses: jurplel/install-qt-action@v3
@@ -116,9 +121,11 @@ jobs:
         run: |
           mkdir build
           cd build
-          # بناء APK بالاعتماد على مسارات qt-cmake الافتراضية والمتوافقة تلقائياً
-          qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a
+          # لازم نمرر QT_HOST_PATH صراحةً، وإلا CMake مش هيلاقي أدوات الـ host (moc/rcc/androiddeployqt)
+          qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH="$QT_HOST_PATH"
           cmake --build .
+          # target الـ apk مش جزء من البناء الافتراضي في Qt6، لازم نطلبه صراحةً
+          cmake --build . --target apk
 
       - name: Find and Copy APK
         run: |

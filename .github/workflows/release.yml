@@ -3,11 +3,11 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*' # السكربت يعمل تلقائياً عند دفع Tag جديد يبدأ بحرف v (مثال: v1.0)
-  workflow_dispatch: # يسمح لك بتشغيل السكربت يدوياً من تبويب Actions في GitHub
+      - 'v*'
+  workflow_dispatch:
 
 permissions:
-  contents: write # إعطاء الصلاحيات للسكربت لإنشاء Release ورفع الملفات
+  contents: write
 
 jobs:
   build-desktop:
@@ -39,7 +39,7 @@ jobs:
           version: '6.5.3'
           host: ${{ matrix.qt_host }}
           arch: ${{ matrix.qt_arch }}
-          modules: 'qtbase'
+          # تم حذف modules: 'qtbase' هنا لتجنب خطأ aqtinstall
 
       - name: Build Project
         run: |
@@ -89,18 +89,26 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # أضفنا هذه الخطوة: أندرويد يحتاج لأدوات سطح المكتب أولاً
+      - name: Setup Qt Desktop (Required for Android Tools)
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.5.3'
+          host: 'linux'
+          arch: 'gcc_64'
+
       - name: Setup Qt for Android
         uses: jurplel/install-qt-action@v3
         with:
           version: '6.5.3'
           target: 'android'
           arch: 'android_arm64_v8a'
-          modules: 'qtbase'
 
       - name: Build APK
         run: |
           mkdir build
           cd build
+          # مسار qt-cmake يتم التعرف عليه تلقائياً بعد الخطوات السابقة
           qt-cmake .. -DCMAKE_BUILD_TYPE=Release -DANDROID_ABI=arm64-v8a
           cmake --build .
 

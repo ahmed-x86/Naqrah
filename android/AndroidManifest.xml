@@ -3,7 +3,6 @@
     <application android:name="org.qtproject.qt.android.bindings.QtApplication"
                  android:label="نقرة"
                  android:extractNativeLibs="true"
-                 android:requestLegacyExternalStorage="true"
                  android:allowBackup="true"
                  android:supportsRtl="true">
         <activity android:name="org.qtproject.qt.android.bindings.QtActivity"
@@ -17,19 +16,9 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
             <meta-data android:name="android.app.lib_name" android:value="Naqrah"/>
-            <meta-data android:name="android.app.qt_sources_resource_id" android:resource="@array/qt_sources"/>
-            <meta-data android:name="android.app.repository" android:value="default"/>
-            <meta-data android:name="android.app.qt_libs_resource_id" android:resource="@array/qt_libs"/>
-            <meta-data android:name="android.app.bundled_libs_resource_id" android:resource="@array/bundled_libs"/>
-            <meta-data android:name="android.app.bundled_in_lib_resource_id" android:resource="@array/bundled_in_lib"/>
-            <meta-data android:name="android.app.bundled_in_assets_resource_id" android:resource="@array/bundled_in_assets"/>
-            <meta-data android:name="android.app.background_running" android:value="false"/>
         </activity>
     </application>
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="33"/>
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-feature android:glEsVersion="0x00020000"/>
-    <uses-permission android:name="android.permission.INTERNET"/>
 </manifest>

@@ -176,7 +176,8 @@ protected:
             m_dynamicLayout->setStretchFactor(m_centerPanel, 0);
             m_dynamicLayout->setStretchFactor(m_leftPanel, 0);
         } else {
-            m_dynamicLayout->setDirection(QBoxLayout::RightToLeft);
+            // تم التعديل هنا لترتيب العناصر بشكل صحيح: اليمين ثم اليسار
+            m_dynamicLayout->setDirection(QBoxLayout::LeftToRight);
             m_rightPanel->setMinimumHeight(0);
             m_centerPanel->setMinimumHeight(0);
             m_leftPanel->setMinimumHeight(0);
@@ -233,7 +234,8 @@ private:
 
         QWidget* containerWidget = new QWidget();
         containerWidget->setStyleSheet("background: transparent;");
-        m_dynamicLayout = new QBoxLayout(QBoxLayout::RightToLeft, containerWidget);
+        // تم التعديل هنا لترتيب الواجهة مع الاحتفاظ بـ RightToLeft في النافذة الرئيسية
+        m_dynamicLayout = new QBoxLayout(QBoxLayout::LeftToRight, containerWidget);
         m_dynamicLayout->setContentsMargins(0, 10, 0, 10);
         m_dynamicLayout->setSpacing(20);
 
@@ -548,9 +550,6 @@ private:
         }
         m_btnToggleTheme->setText("المظهر: " + themeName);
 
-        // إحساس مستوحى من هوية Qt: أسطح بحدود ناعمة، تباين واضح للعناوين،
-        // وحدود شفافة بدل حدود صلبة رمادية - كل ده QSS بحت من غير أي صور
-        // أو تأثيرات باهظة على المعالج/الذاكرة.
         QString qss = QStringLiteral(R"(
             QWidget { color: %1; font-family: "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif; }
             QDialog { background-color: %2; }
@@ -604,15 +603,17 @@ private:
             QPushButton#btnSidebarItem { background: transparent; color: %1; text-align: right; padding: 12px 16px; border-radius: 10px; font-weight: 600; }
             QPushButton#btnSidebarItem:hover { background: %4; }
 
-            QPushButton#btnPrimary { background: %7; color: %2; font-size: 16px; }
-            QPushButton#btnPrimary:hover { background: %8; }
-            QPushButton#btnPrimary:pressed { background: %9; }
+            /* الألوان الجديدة المخصصة لزر ابدأ التشكيل */
+            QPushButton#btnPrimary { background: #26274d; color: #c99bf5; font-size: 16px; border-radius: 10px; }
+            QPushButton#btnPrimary:hover { background: #c99bf5; color: #26274d; }
+            QPushButton#btnPrimary:pressed { background: #a97bd5; color: #26274d; }
 
             QPushButton#btnMark { background: %2; color: %6; font-size: 17px; border: 1px solid rgba(127,127,127,0.2); }
             QPushButton#btnMark:hover { background: %6; color: %2; border: 1px solid %6; }
 
-            QPushButton#btnNext { background: %5; color: %2; font-size: 18px; font-weight: 700; }
-            QPushButton#btnNext:hover { background: %1; color: %2; }
+            /* الألوان الجديدة المخصصة لزر الحرف التالي */
+            QPushButton#btnNext { background: #26274d; color: #b6bafb; font-size: 18px; font-weight: 700; border-radius: 10px; }
+            QPushButton#btnNext:hover { background: #b6bafb; color: #26274d; }
 
             QPushButton#btnCopy { background: transparent; border: 1px solid %6; color: %6; font-size: 13px; padding: 8px 14px; }
             QPushButton#btnCopy:hover { background: %6; color: %2; }

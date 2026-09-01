@@ -86,6 +86,13 @@ private:
             if (m_scrollArea) {
                 QScroller::grabGesture(m_scrollArea->viewport(), QScroller::LeftMouseButtonGesture);
             }
+            if (m_inputText) {
+                QScroller::grabGesture(m_inputText->viewport(), QScroller::LeftMouseButtonGesture);
+            }
+            if (m_outputText) {
+                QScroller::grabGesture(m_outputText->viewport(), QScroller::LeftMouseButtonGesture);
+            }
+
             if (m_gridMarks) {
                 m_gridMarks->setSpacing(16);
             }
@@ -101,6 +108,13 @@ private:
             if (m_scrollArea) {
                 QScroller::ungrabGesture(m_scrollArea->viewport());
             }
+            if (m_inputText) {
+                QScroller::ungrabGesture(m_inputText->viewport());
+            }
+            if (m_outputText) {
+                QScroller::ungrabGesture(m_outputText->viewport());
+            }
+
             if (m_gridMarks) {
                 m_gridMarks->setSpacing(8);
             }
@@ -275,10 +289,11 @@ private:
         m_inputText = new QTextEdit(inputCard);
         m_inputText->setPlaceholderText("اكتب أو الصق النص هنا...");
         m_inputText->setMinimumHeight(150);
-        m_inputText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        m_inputText->setMaximumHeight(220); // يمنع المربع من ابتلاع الشاشة
+        m_inputText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         
-        m_btnStartTashkeel = new QPushButton("تشكيل", inputCard);
-        m_btnStartTashkeel->setObjectName("btnPrimary");
+        m_btnStartTashkeel = new QPushButton("ابدأ التشكيل", inputCard);
+        m_btnStartTashkeel->setObjectName("btnSecondary"); // تغيير الهوية لتطابق باقي الأزرار
         m_btnStartTashkeel->setCursor(Qt::PointingHandCursor);
         m_btnStartTashkeel->setMinimumHeight(44); // Initial generic size
         m_btnStartTashkeel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -342,7 +357,8 @@ private:
         m_outputText = new QTextEdit();
         m_outputText->setReadOnly(true);
         m_outputText->setMinimumHeight(150);
-        m_outputText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        m_outputText->setMaximumHeight(220); // يمنع المربع من ابتلاع الشاشة
+        m_outputText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         
         m_btnCopy = new QPushButton("نسخ النص");
         m_btnCopy->setObjectName("btnSecondary");

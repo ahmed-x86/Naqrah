@@ -14,9 +14,12 @@
 #include <QFontDatabase>
 #include <QScrollArea>
 #include <QScroller>
+#include <QScrollerProperties>
 #include <QMouseEvent>
 #include <QTouchEvent>
 #include <QKeyEvent>
+#include <QScrollBar>
+#include <cmath>
 
 enum class InputMode { Unknown, Touch, Desktop };
 
@@ -32,6 +35,22 @@ public:
         buildUI();
         applyShadcnTheme();
         
+        // Parent scroll area: grab kinetic scrolling once, unconditionally.
+        if (m_scrollArea) {
+            QScroller::grabGesture(m_scrollArea->viewport(), QScroller::TouchGesture);
+            QScrollerProperties sp = QScroller::scroller(m_scrollArea->viewport())->scrollerProperties();
+            sp.setScrollMetric(QScrollerProperties::DragStartDistance, 0.0015);
+            sp.setScrollMetric(QScrollerProperties::OvershootDragResistanceFactor, 0.5);
+            sp.setScrollMetric(QScrollerProperties::HorizontalOvershootPolicy,
+                               QVariant::fromValue(QScrollerProperties::OvershootAlwaysOff));
+            QScroller::scroller(m_scrollArea->viewport())->setScrollerProperties(sp);
+        }
+
+        // Child QTextEdit viewports get touch events routed through us
+        if (m_inputText)  m_inputText->viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
+        if (m_outputText) m_outputText->viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
+        if (m_scrollArea) m_scrollArea->viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
+
         qApp->installEventFilter(this);
     }
 
@@ -46,43 +65,88 @@ protected:
     }
 
     bool eventFilter(QObject* obj, QEvent* event) override {
-        QEvent::Type type = event->type();
+        const QEvent::Type type = event->type();
 
-        // --- قانون "الطلاق بالتلاتة" للحاويات ---
-        // إذا كان الحدث حركة تمرير (Wheel) داخل مربعات النص، نرفضه ليمر للشاشة الرئيسية
-        if (m_inputText && m_outputText) {
-            if (obj == m_inputText->viewport() || obj == m_outputText->viewport()) {
-                if (type == QEvent::Wheel) {
-                    event->ignore(); // رفض الحدث ورميه للأب (الشاشة الرئيسية)
-                    return false;
-                }
-            }
-        }
-        // -----------------------------------------
-        
-        // اكتشاف وضع اللمس
-        if (type == QEvent::TouchBegin || type == QEvent::TouchUpdate || type == QEvent::TouchEnd) {
+        // ---------- Input-mode detection ----------
+        if (type == QEvent::TouchBegin || type == QEvent::TouchUpdate) {
             if (m_currentInputMode != InputMode::Touch) {
                 m_currentInputMode = InputMode::Touch;
                 updateUIForInputMode(m_currentInputMode);
             }
-        } 
-        // اكتشاف وضع الماوس
-        else if (type == QEvent::MouseMove || type == QEvent::MouseButtonPress || type == QEvent::MouseButtonDblClick) {
+        } else if (type == QEvent::MouseMove || type == QEvent::MouseButtonPress ||
+                   type == QEvent::MouseButtonDblClick) {
             auto* mouseEvent = static_cast<QMouseEvent*>(event);
-            if (mouseEvent->source() != Qt::MouseEventSynthesizedBySystem && 
+            if (mouseEvent->source() != Qt::MouseEventSynthesizedBySystem &&
                 mouseEvent->source() != Qt::MouseEventSynthesizedByApplication) {
                 if (m_currentInputMode != InputMode::Desktop) {
                     m_currentInputMode = InputMode::Desktop;
                     updateUIForInputMode(m_currentInputMode);
                 }
             }
-        } 
-        // اكتشاف وضع الكيبورد
-        else if (type == QEvent::KeyPress || type == QEvent::KeyRelease) {
+        } else if (type == QEvent::KeyPress || type == QEvent::KeyRelease) {
             if (m_currentInputMode != InputMode::Desktop) {
                 m_currentInputMode = InputMode::Desktop;
                 updateUIForInputMode(m_currentInputMode);
+            }
+        }
+
+        // ---------- Nested-scroll arbitration for the QTextEdit viewports ----------
+        const bool isInputVp  = m_inputText  && obj == m_inputText->viewport();
+        const bool isOutputVp = m_outputText && obj == m_outputText->viewport();
+
+        if ((isInputVp || isOutputVp) &&
+            (type == QEvent::TouchBegin || type == QEvent::TouchUpdate || type == QEvent::TouchEnd)) {
+            
+            QTextEdit* edit = isInputVp ? m_inputText : m_outputText;
+            auto* te = static_cast<QTouchEvent*>(event);
+            
+            if (te->points().isEmpty()) return QWidget::eventFilter(obj, event);
+            const QTouchEvent::TouchPoint& pt = te->points().first();
+            
+            if (type == QEvent::TouchBegin) {
+                m_touchDecided   = false;
+                m_routeToParent  = false;
+                m_activeTouchSrc = obj;
+                m_touchStartPos  = pt.position();
+                return QWidget::eventFilter(obj, event);
+            }
+            
+            if (type == QEvent::TouchUpdate && m_activeTouchSrc == obj) {
+                if (!m_touchDecided) {
+                    const QPointF delta = pt.position() - m_touchStartPos;
+                    if (std::abs(delta.y()) < kSwipeThreshold && std::abs(delta.x()) < kSwipeThreshold) {
+                        return QWidget::eventFilter(obj, event);
+                    }
+                    
+                    m_touchDecided = true;
+                    const bool focused        = edit->hasFocus();
+                    const bool needsInternal  = edit->verticalScrollBar() && edit->verticalScrollBar()->maximum() > 0;
+                    const QScrollBar* vbar    = edit->verticalScrollBar();
+                    const bool atTop          = !vbar || vbar->value() <= vbar->minimum();
+                    const bool atBottom       = !vbar || vbar->value() >= vbar->maximum();
+                    const bool swipingDown    = delta.y() > 0;
+                    const bool wouldOverscroll = (swipingDown && atTop) || (!swipingDown && atBottom);
+                    
+                    m_routeToParent = !(focused && needsInternal && !wouldOverscroll);
+                }
+                
+                if (m_routeToParent) {
+                    QCoreApplication::sendEvent(m_scrollArea->viewport(), event);
+                    return true; 
+                }
+                return QWidget::eventFilter(obj, event);
+            }
+            
+            if (type == QEvent::TouchEnd && m_activeTouchSrc == obj) {
+                if (m_routeToParent) {
+                    QCoreApplication::sendEvent(m_scrollArea->viewport(), event);
+                    m_activeTouchSrc = nullptr;
+                    m_touchDecided   = false;
+                    return true;
+                }
+                m_activeTouchSrc = nullptr;
+                m_touchDecided   = false;
+                return QWidget::eventFilter(obj, event);
             }
         }
         
@@ -92,32 +156,21 @@ protected:
 private:
     void updateUIForInputMode(InputMode mode) {
         if (mode == InputMode::Touch) {
-            // الشاشة الرئيسية فقط هي من تمتلك حق التمرير بالإصبع
-            if (m_scrollArea) {
-                QScroller::grabGesture(m_scrollArea->viewport(), QScroller::LeftMouseButtonGesture);
-            }
-            // تم سحب صلاحية (grabGesture) من الحاويات لضمان عدم سرقة اللمس!
-
             if (m_gridMarks) m_gridMarks->setSpacing(16);
             for (auto* btn : m_markButtons) {
                 if (btn) btn->setMinimumHeight(64);
             }
             if (m_btnStartTashkeel) m_btnStartTashkeel->setMinimumHeight(56);
-            if (m_btnNextChar) m_btnNextChar->setMinimumHeight(56);
-            if (m_btnCopy) m_btnCopy->setMinimumHeight(56);
-            
+            if (m_btnNextChar)      m_btnNextChar->setMinimumHeight(56);
+            if (m_btnCopy)          m_btnCopy->setMinimumHeight(56);
         } else if (mode == InputMode::Desktop) {
-            if (m_scrollArea) {
-                QScroller::ungrabGesture(m_scrollArea->viewport());
-            }
-
             if (m_gridMarks) m_gridMarks->setSpacing(8);
             for (auto* btn : m_markButtons) {
                 if (btn) btn->setMinimumHeight(44);
             }
             if (m_btnStartTashkeel) m_btnStartTashkeel->setMinimumHeight(44);
-            if (m_btnNextChar) m_btnNextChar->setMinimumHeight(44);
-            if (m_btnCopy) m_btnCopy->setMinimumHeight(44);
+            if (m_btnNextChar)      m_btnNextChar->setMinimumHeight(44);
+            if (m_btnCopy)          m_btnCopy->setMinimumHeight(44);
         }
     }
 
@@ -203,17 +256,8 @@ private:
                 background: transparent;
             }
             QScrollBar:vertical {
+                width: 0px; 
                 background: transparent;
-                width: 8px;
-                margin: 0;
-            }
-            QScrollBar::handle:vertical {
-                background: #27272a;
-                border-radius: 4px;
-                min-height: 24px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0;
             }
         )";
         setStyleSheet(qss);
@@ -268,8 +312,9 @@ private:
         m_inputText->setMinimumHeight(150);
         m_inputText->setMaximumHeight(220);
         m_inputText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        m_inputText->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff); // إخفاء التمرير الداخلي
-        m_inputText->viewport()->installEventFilter(this); // تفعيل فلتر الطلاق
+        m_inputText->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded); 
+        m_inputText->viewport()->installEventFilter(this);
+        m_inputText->viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
         
         m_btnStartTashkeel = new QPushButton("ابدأ التشكيل", inputCard);
         m_btnStartTashkeel->setObjectName("btnSecondary"); 
@@ -282,7 +327,7 @@ private:
         inputLayout->addWidget(m_btnStartTashkeel);
         connect(m_btnStartTashkeel, &QPushButton::clicked, this, &MainWindow::startTashkeel);
 
-        // 2. Tashkeel (Center) Card
+        // 2. Tashkeel Card
         QWidget* tashkeelCard = createCard("لوحة التشكيل", "اختر الحركات المناسبة للحرف المظلل");
         auto* tashkeelLayout = static_cast<QVBoxLayout*>(tashkeelCard->layout());
         
@@ -338,8 +383,9 @@ private:
         m_outputText->setMinimumHeight(150);
         m_outputText->setMaximumHeight(220); 
         m_outputText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        m_outputText->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff); // إخفاء التمرير الداخلي
-        m_outputText->viewport()->installEventFilter(this); // تفعيل فلتر الطلاق
+        m_outputText->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded); 
+        m_outputText->viewport()->installEventFilter(this);
+        m_outputText->viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
         
         m_btnCopy = new QPushButton("نسخ النص");
         m_btnCopy->setObjectName("btnSecondary");
@@ -478,7 +524,13 @@ private:
         else m_btnNextChar->setText("الحرف التالي");
     }
 
+    // --- Variables for new Touch Arbitration ---
     InputMode m_currentInputMode = InputMode::Unknown;
+    QPointF   m_touchStartPos;
+    bool      m_touchDecided   = false; 
+    bool      m_routeToParent  = false; 
+    QObject*  m_activeTouchSrc = nullptr;
+    static constexpr int kSwipeThreshold = 12;
 
     QBoxLayout* m_dynamicLayout{};
     QTextEdit *m_inputText{}, *m_outputText{};

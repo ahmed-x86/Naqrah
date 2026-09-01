@@ -1,4 +1,3 @@
-#include "theme.h"
 #include <QApplication>
 #include <QCoreApplication>
 #include <QWidget>
@@ -6,213 +5,297 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
-#include <QPainter>
-#include <QPainterPath>
-#include <QRadialGradient>
-#include <QLinearGradient>
-#include <QTimer>
-#include <QMouseEvent>
-#include <QFontDatabase>
-#include <QPropertyAnimation>
-#include <QParallelAnimationGroup>
-#include <QStackedWidget>
-#include <QResizeEvent>
 #include <QLabel>
 #include <QTextEdit>
 #include <QClipboard>
 #include <QRegularExpression>
 #include <QMessageBox>
-#include <QScrollArea>
-#include <QScroller>
-#include <QGraphicsDropShadowEffect>
+#include <QResizeEvent>
+#include <QFontDatabase>
 
-class RippleButton : public QPushButton {
-    Q_OBJECT
-    Q_PROPERTY(qreal rippleRadius READ rippleRadius WRITE setRippleRadius)
-    Q_PROPERTY(qreal rippleOpacity READ rippleOpacity WRITE setRippleOpacity)
-
-public:
-    explicit RippleButton(QWidget* parent = nullptr) : QPushButton(parent) {
-        setCursor(Qt::PointingHandCursor);
-    }
-    qreal rippleRadius() const { return m_rippleRadius; }
-    void setRippleRadius(qreal r) { m_rippleRadius = r; update(); }
-    qreal rippleOpacity() const { return m_rippleOpacity; }
-    void setRippleOpacity(qreal o) { m_rippleOpacity = o; update(); }
-
-protected:
-    void mousePressEvent(QMouseEvent* event) override {
-        QPushButton::mousePressEvent(event);
-        m_ripplePos = event->position();
-        m_rippleRadius = 0;
-        m_rippleOpacity = 0.2;
-
-        auto* radiusAnim = new QPropertyAnimation(this, "rippleRadius");
-        radiusAnim->setDuration(350);
-        radiusAnim->setStartValue(0);
-        radiusAnim->setEndValue(width() * 1.5);
-        radiusAnim->setEasingCurve(QEasingCurve::OutQuad);
-
-        auto* opacityAnim = new QPropertyAnimation(this, "rippleOpacity");
-        opacityAnim->setDuration(350);
-        opacityAnim->setStartValue(0.2);
-        opacityAnim->setEndValue(0.0);
-
-        auto* group = new QParallelAnimationGroup(this);
-        group->addAnimation(radiusAnim);
-        group->addAnimation(opacityAnim);
-        group->start(QAbstractAnimation::DeleteWhenStopped);
-    }
-
-    void paintEvent(QPaintEvent* event) override {
-        QPushButton::paintEvent(event);
-        if (m_rippleRadius > 0 && m_rippleOpacity > 0) {
-            QPainter painter(this);
-            painter.setRenderHint(QPainter::Antialiasing);
-            QPainterPath path;
-            path.addRoundedRect(rect(), 10, 10);
-            painter.setClipPath(path);
-            painter.setBrush(QColor(0, 0, 0, static_cast<int>(m_rippleOpacity * 255)));
-            painter.setPen(Qt::NoPen);
-            painter.drawEllipse(m_ripplePos, m_rippleRadius, m_rippleRadius);
-        }
-    }
-
-private:
-    QPointF m_ripplePos;
-    qreal m_rippleRadius = 0;
-    qreal m_rippleOpacity = 0;
-};
-
-class GlowWindow : public QWidget {
+class MainWindow : public QWidget {
     Q_OBJECT
 
 public:
-    explicit GlowWindow(QWidget* parent = nullptr) : QWidget(parent) {
-        setWindowTitle("نقرة - للتشكيل");
-        setMinimumSize(320, 480);
+    explicit MainWindow(QWidget* parent = nullptr) : QWidget(parent) {
+        setWindowTitle("Naqrah - نقرة");
+        setMinimumSize(900, 600);
         setLayoutDirection(Qt::RightToLeft);
 
-        m_currentGlowPos = QPointF(width() / 2.0, height() / 2.0);
-        m_targetGlowPos  = m_currentGlowPos;
-
-        buildMainLayout();
-        buildSidebar();
-
-        m_glowTimer = new QTimer(this);
-        m_glowTimer->setInterval(16);
-        connect(m_glowTimer, &QTimer::timeout, this, [this]() {
-            m_currentGlowPos += (m_targetGlowPos - m_currentGlowPos) * 0.08;
-            update();
-        });
-        m_glowTimer->start();
-
-        qApp->installEventFilter(this);
-
-        m_theme = ThemeMode::Mocha;
-        applyTheme(m_theme);
+        buildUI();
+        applyShadcnTheme();
     }
 
 protected:
-    void paintEvent(QPaintEvent*) override {
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-
-        QLinearGradient bg(0, 0, 0, height());
-        QColor base(m_colors.Base);
-        QColor baseSoft = base.lighter(m_colors.isDark ? 112 : 100);
-        bg.setColorAt(0.0, m_colors.isDark ? baseSoft : base);
-        bg.setColorAt(1.0, base);
-        painter.fillRect(rect(), QBrush(bg));
-
-        QRadialGradient glow(m_currentGlowPos, 320.0);
-        QColor glowColor(m_colors.Accent3);
-
-        int alpha = (m_colors.isDark) ? 28 : 55;
-        glowColor.setAlpha(alpha);
-        glow.setColorAt(0.0, glowColor);
-        glowColor.setAlpha(0);
-        glow.setColorAt(1.0, glowColor);
-
-        painter.setBrush(QBrush(glow));
-        painter.setPen(Qt::NoPen);
-        painter.drawRect(rect());
-    }
-
-    bool eventFilter(QObject* watched, QEvent* event) override {
-        if (event->type() == QEvent::MouseMove || event->type() == QEvent::TouchUpdate) {
-            QPointF pos;
-            if (event->type() == QEvent::MouseMove) pos = static_cast<QMouseEvent*>(event)->globalPosition();
-            else pos = static_cast<QTouchEvent*>(event)->points().first().globalPosition();
-            m_targetGlowPos = mapFromGlobal(pos.toPoint());
-        }
-        if (event->type() == QEvent::MouseButtonPress && m_isSidebarOpen) {
-            QMouseEvent* mouseEvent = static_cast<QMouseEvent*>(event);
-            QWidget* clickedWidget = qobject_cast<QWidget*>(watched);
-
-            bool insideSidebarOrToggle = clickedWidget &&
-                (clickedWidget == m_sidebar || m_sidebar->isAncestorOf(clickedWidget) ||
-                 clickedWidget == m_hamburgerBtn);
-
-            if (!insideSidebarOrToggle) {
-                QPoint localPos = mapFromGlobal(mouseEvent->globalPosition().toPoint());
-                if (localPos.x() < width() - 260) {
-                    toggleSidebar();
-                }
-            }
-        }
-        return QWidget::eventFilter(watched, event);
-    }
-
     void resizeEvent(QResizeEvent* event) override {
         QWidget::resizeEvent(event);
-
-        if (m_sidebar) {
-            if (m_isSidebarOpen) {
-                m_sidebar->setGeometry(width() - 260, 0, 260, height());
-            } else {
-                m_sidebar->setGeometry(width(), 0, 260, height());
-            }
-        }
-
-        if (width() < height() && width() < 700) {
+        if (width() < 850) {
             m_dynamicLayout->setDirection(QBoxLayout::TopToBottom);
-            m_rightPanel->setMinimumHeight(200);
-            m_centerPanel->setMinimumHeight(450);
-            m_leftPanel->setMinimumHeight(200);
-            m_dynamicLayout->setStretchFactor(m_rightPanel, 0);
-            m_dynamicLayout->setStretchFactor(m_centerPanel, 0);
-            m_dynamicLayout->setStretchFactor(m_leftPanel, 0);
         } else {
             m_dynamicLayout->setDirection(QBoxLayout::LeftToRight);
-            m_rightPanel->setMinimumHeight(0);
-            m_centerPanel->setMinimumHeight(0);
-            m_leftPanel->setMinimumHeight(0);
-            m_dynamicLayout->setStretchFactor(m_rightPanel, 2);
-            m_dynamicLayout->setStretchFactor(m_centerPanel, 3);
-            m_dynamicLayout->setStretchFactor(m_leftPanel, 2);
         }
     }
 
 private:
-    void toggleSidebar() {
-        m_isSidebarOpen = !m_isSidebarOpen;
-        if (m_isSidebarOpen) { m_sidebar->raise(); }
-
-        auto* anim = new QPropertyAnimation(m_sidebar, "geometry");
-        anim->setDuration(300);
-        anim->setEasingCurve(QEasingCurve::OutQuint);
-
-        if (m_isSidebarOpen) {
-            anim->setStartValue(QRect(width(), 0, 260, height()));
-            anim->setEndValue(QRect(width() - 260, 0, 260, height()));
-        } else {
-            anim->setStartValue(QRect(width() - 260, 0, 260, height()));
-            anim->setEndValue(QRect(width(), 0, 260, height()));
-        }
-        anim->start(QAbstractAnimation::DeleteWhenStopped);
+    void applyShadcnTheme() {
+        QString qss = R"(
+            QWidget {
+                background-color: #09090b;
+                color: #f4f4f5;
+                font-family: "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif;
+            }
+            QWidget#header {
+                background-color: #09090b;
+                border-bottom: 1px solid #27272a;
+            }
+            QLabel#headerTitle {
+                font-size: 18px;
+                font-weight: bold;
+                color: #f4f4f5;
+                letter-spacing: 0.5px;
+            }
+            QWidget#card {
+                background-color: #121215;
+                border: 1px solid #27272a;
+                border-radius: 12px;
+            }
+            QLabel#cardTitle {
+                font-size: 15px;
+                font-weight: bold;
+                color: #f4f4f5;
+                background-color: transparent;
+            }
+            QLabel#cardSubtitle {
+                font-size: 12px;
+                color: #a1a1aa;
+                background-color: transparent;
+            }
+            QTextEdit {
+                background-color: #09090b;
+                color: #f4f4f5;
+                border: 1px solid #27272a;
+                border-radius: 8px;
+                padding: 12px;
+                font-size: 16px;
+                selection-background-color: #27272a;
+            }
+            QTextEdit:focus {
+                border: 1px solid #a1a1aa;
+            }
+            QPushButton#btnPrimary {
+                background-color: #f4f4f5;
+                color: #09090b;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 16px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton#btnPrimary:hover {
+                background-color: #e4e4e7;
+            }
+            QPushButton#btnPrimary:pressed {
+                background-color: #d4d4d8;
+            }
+            QPushButton#btnSecondary {
+                background-color: #18181b;
+                color: #f4f4f5;
+                border: 1px solid #27272a;
+                border-radius: 6px;
+                padding: 10px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton#btnSecondary:hover {
+                background-color: #27272a;
+            }
+            QPushButton#btnSecondary:pressed {
+                background-color: #3f3f46;
+            }
+            QPushButton#btnMark {
+                background-color: #18181b;
+                color: #f4f4f5;
+                border: 1px solid #27272a;
+                border-radius: 8px;
+                padding: 14px 10px;
+                font-size: 15px;
+                font-weight: bold;
+            }
+            QPushButton#btnMark:hover {
+                background-color: #27272a;
+            }
+            QPushButton#btnMark:pressed {
+                background-color: #3f3f46;
+            }
+            QLabel#currentWordLabel {
+                font-size: 42px;
+                font-weight: bold;
+                color: #f4f4f5;
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 8px;
+                margin: 0;
+            }
+            QScrollBar::handle:vertical {
+                background: #27272a;
+                border-radius: 4px;
+                min-height: 24px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0;
+            }
+        )";
+        setStyleSheet(qss);
     }
 
+    void buildUI() {
+        auto* mainLayout = new QVBoxLayout(this);
+        mainLayout->setContentsMargins(0, 0, 0, 0);
+        mainLayout->setSpacing(0);
+
+        // Header
+        QWidget* header = new QWidget();
+        header->setObjectName("header");
+        header->setFixedHeight(65);
+        auto* headerLayout = new QHBoxLayout(header);
+        headerLayout->setContentsMargins(24, 0, 24, 0);
+        
+        QLabel* logoBlock = new QLabel();
+        logoBlock->setFixedSize(22, 22);
+        logoBlock->setStyleSheet("background-color: #f4f4f5; border-radius: 4px;");
+        
+        QLabel* title = new QLabel("نقرة");
+        title->setObjectName("headerTitle");
+        
+        headerLayout->addWidget(logoBlock);
+        headerLayout->addSpacing(10);
+        headerLayout->addWidget(title);
+        headerLayout->addStretch();
+        
+        mainLayout->addWidget(header);
+
+        // Content Container
+        QWidget* contentWidget = new QWidget();
+        auto* contentLayout = new QVBoxLayout(contentWidget);
+        contentLayout->setContentsMargins(32, 32, 32, 32);
+
+        // Main 3-column layout
+        m_dynamicLayout = new QBoxLayout(QBoxLayout::LeftToRight);
+        m_dynamicLayout->setSpacing(24);
+
+        // 1. Input Card
+        QWidget* inputCard = createCard("النص المدخل", "أدخل النص الذي تود تشكيله هنا");
+        auto* inputLayout = static_cast<QVBoxLayout*>(inputCard->layout());
+        
+        m_inputText = new QTextEdit();
+        m_inputText->setPlaceholderText("اكتب أو الصق النص هنا...");
+        m_btnStartTashkeel = new QPushButton("تشكيل");
+        m_btnStartTashkeel->setObjectName("btnPrimary");
+        m_btnStartTashkeel->setCursor(Qt::PointingHandCursor);
+        m_btnStartTashkeel->setMinimumHeight(44);
+        
+        inputLayout->addWidget(m_inputText);
+        inputLayout->addSpacing(12);
+        inputLayout->addWidget(m_btnStartTashkeel);
+        connect(m_btnStartTashkeel, &QPushButton::clicked, this, &MainWindow::startTashkeel);
+
+        // 2. Tashkeel (Center) Card
+        QWidget* tashkeelCard = createCard("لوحة التشكيل", "اختر الحركات المناسبة للحرف المظلل");
+        auto* tashkeelLayout = static_cast<QVBoxLayout*>(tashkeelCard->layout());
+        
+        m_lblCurrentWord = new QLabel("الكلمة");
+        m_lblCurrentWord->setObjectName("currentWordLabel");
+        m_lblCurrentWord->setAlignment(Qt::AlignCenter);
+        m_lblCurrentWord->setMinimumHeight(120);
+        m_lblCurrentWord->setWordWrap(true);
+
+        QGridLayout* gridMarks = new QGridLayout();
+        gridMarks->setSpacing(10);
+
+        struct DiacriticMark { QString name; QString unicode; };
+        QList<DiacriticMark> marks = {
+            {"فتحة", "َ"}, {"ضمة", "ُ"}, {"كسرة", "ِ"},
+            {"سكون", "ْ"}, {"شدة", "ّ"},
+            {"تنوين فتح", "ً"}, {"تنوين ضم", "ٌ"}, {"تنوين كسر", "ٍ"}
+        };
+
+        int row = 0, col = 0;
+        for (const auto& mark : marks) {
+            QPushButton* btnMark = new QPushButton(mark.name + " (ـ" + mark.unicode + ")");
+            btnMark->setObjectName("btnMark");
+            btnMark->setCursor(Qt::PointingHandCursor);
+            btnMark->setMinimumHeight(52);
+            connect(btnMark, &QPushButton::clicked, [this, mark]() { applyMark(mark.unicode); });
+            gridMarks->addWidget(btnMark, row, col);
+            col++;
+            if (col > 1) { col = 0; row++; }
+        }
+
+        m_btnNextChar = new QPushButton("الحرف التالي");
+        m_btnNextChar->setObjectName("btnSecondary");
+        m_btnNextChar->setCursor(Qt::PointingHandCursor);
+        m_btnNextChar->setMinimumHeight(44);
+        connect(m_btnNextChar, &QPushButton::clicked, this, &MainWindow::advanceChar);
+
+        tashkeelLayout->addWidget(m_lblCurrentWord);
+        tashkeelLayout->addSpacing(10);
+        tashkeelLayout->addLayout(gridMarks);
+        tashkeelLayout->addSpacing(16);
+        tashkeelLayout->addWidget(m_btnNextChar);
+
+        // 3. Output Card
+        QWidget* outputCard = createCard("النتيجة", "النص النهائي المشكّل");
+        auto* outputLayout = static_cast<QVBoxLayout*>(outputCard->layout());
+        
+        m_outputText = new QTextEdit();
+        m_outputText->setReadOnly(true);
+        m_btnCopy = new QPushButton("نسخ النص");
+        m_btnCopy->setObjectName("btnSecondary");
+        m_btnCopy->setCursor(Qt::PointingHandCursor);
+        m_btnCopy->setMinimumHeight(44);
+        connect(m_btnCopy, &QPushButton::clicked, this, [this]() {
+            QGuiApplication::clipboard()->setText(m_outputText->toPlainText());
+            QMessageBox msgBox(this);
+            msgBox.setStyleSheet(this->styleSheet() + "QLabel{color:#f4f4f5; background:transparent;} QMessageBox{background-color:#121215; border:1px solid #27272a;} QPushButton{background-color:#f4f4f5; color:#09090b; padding:8px 16px; border-radius:6px; font-weight:bold;}");
+            msgBox.setText("تم نسخ النص بنجاح!");
+            msgBox.exec();
+        });
+
+        outputLayout->addWidget(m_outputText);
+        outputLayout->addSpacing(12);
+        outputLayout->addWidget(m_btnCopy);
+
+        m_dynamicLayout->addWidget(inputCard, 1);
+        m_dynamicLayout->addWidget(tashkeelCard, 1);
+        m_dynamicLayout->addWidget(outputCard, 1);
+
+        contentLayout->addLayout(m_dynamicLayout);
+        mainLayout->addWidget(contentWidget);
+    }
+
+    QWidget* createCard(const QString& titleText, const QString& subtitleText) {
+        QWidget* card = new QWidget();
+        card->setObjectName("card");
+        auto* layout = new QVBoxLayout(card);
+        layout->setContentsMargins(20, 20, 20, 20);
+        layout->setSpacing(4);
+
+        QLabel* title = new QLabel(titleText);
+        title->setObjectName("cardTitle");
+        
+        QLabel* subtitle = new QLabel(subtitleText);
+        subtitle->setObjectName("cardSubtitle");
+
+        layout->addWidget(title);
+        layout->addWidget(subtitle);
+        layout->addSpacing(12);
+        
+        return card;
+    }
+
+    // --- Backend Logic Functions ---
     void startTashkeel() {
         QString text = m_inputText->toPlainText().trimmed();
         if (text.isEmpty()) return;
@@ -288,8 +371,8 @@ private:
         QString html = "<div style='direction: rtl;'>";
         for (int i = 0; i < m_currentCharIdx; i++) html += currentWord[i];
 
-        html += QString("<span style='color: %1; text-decoration: underline;'>%2</span>")
-                .arg(m_colors.Danger).arg(currentWord[m_currentCharIdx]);
+        html += QString("<span style='color: #ef4444; text-decoration: underline;'>%1</span>")
+                .arg(currentWord[m_currentCharIdx]);
 
         if (waitingAfterShadda) html += "ّ";
 
@@ -302,392 +385,10 @@ private:
         else m_btnNextChar->setText("الحرف التالي");
     }
 
-    void applyTheme(ThemeMode mode) {
-        m_theme = mode;
-        m_isCustomTheme = false;
-
-        switch (m_theme) {
-            case ThemeMode::Latte:          m_colors = LatteTheme; break;
-            case ThemeMode::ShamelaClassic: m_colors = ShamelaClassicTheme; break;
-            case ThemeMode::Nord:           m_colors = NordTheme; break;
-            case ThemeMode::Gruvbox:        m_colors = GruvboxTheme; break;
-            case ThemeMode::Mocha:
-            default:                        m_colors = MochaTheme; break;
-        }
-        applyCurrentColors();
-    }
-
-    void applyCustomTheme(const ThemeColors& customColors) {
-        m_colors = customColors;
-        m_isCustomTheme = true;
-        applyCurrentColors();
-    }
-
-    void applyCurrentColors() {
-        QString themeName;
-        if (m_isCustomTheme) themeName = "🎨 مخصص";
-        else {
-            switch (m_theme) {
-                case ThemeMode::Latte:          themeName = "☀️ Latte"; break;
-                case ThemeMode::ShamelaClassic: themeName = "📜 Shamela Classic"; break;
-                case ThemeMode::Nord:           themeName = "❄️ Nord"; break;
-                case ThemeMode::Gruvbox:        themeName = "📦 Gruvbox"; break;
-                case ThemeMode::Mocha:
-                default:                        themeName = "☕ Mocha"; break;
-            }
-        }
-        m_btnToggleTheme->setText("المظهر: " + themeName);
-
-        QString qss = QStringLiteral(R"(
-            QWidget { color: %1; font-family: "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif; }
-            QDialog { background-color: %2; }
-
-            QLabel#appTitle {
-                font-size: 21px;
-                font-weight: 700;
-                letter-spacing: 0.5px;
-            }
-            QLabel#panelLabel {
-                font-size: 13px;
-                font-weight: 700;
-                color: %6;
-                text-transform: none;
-            }
-            QLabel#currentWordLabel {
-                font-size: 46px;
-                font-weight: 800;
-                background: transparent;
-            }
-            QLabel#sidebarBrand {
-                font-size: 22px;
-                font-weight: 800;
-                color: %7;
-                padding: 0 8px;
-            }
-
-            QWidget#panelCard {
-                background-color: %3;
-                border: 1px solid rgba(127,127,127,0.16);
-                border-radius: 14px;
-            }
-
-            QPushButton { font-size: 15px; font-weight: 600; border: none; border-radius: 10px; padding: 12px; }
-
-            QTextEdit {
-                background-color: %2;
-                color: %1;
-                border: 1px solid rgba(127,127,127,0.22);
-                border-radius: 10px;
-                padding: 10px;
-                font-size: 16px;
-                selection-background-color: %7;
-            }
-            QTextEdit:focus { border: 1px solid %7; }
-
-            QPushButton#hamburgerBtn { background: transparent; color: %1; padding: 4px; border-radius: 8px; font-weight: 700; }
-            QPushButton#hamburgerBtn:hover { background: %4; }
-
-            QWidget#sidebar { background-color: %3; border-left: 1px solid rgba(127,127,127,0.18); }
-            QPushButton#btnSidebarItem { background: transparent; color: %1; text-align: right; padding: 12px 16px; border-radius: 10px; font-weight: 600; }
-            QPushButton#btnSidebarItem:hover { background: %4; }
-
-            /* زر ابدأ التشكيل: نص داكن #26274d، وخلفية #c99bf5. عند التمرير تتغير الخلفية لدرجة أفتح ويبقى النص ثابتاً */
-            QPushButton#btnPrimary { background-color: #c99bf5; color: #26274d; font-size: 16px; font-weight: 700; border-radius: 10px; }
-            QPushButton#btnPrimary:hover { background-color: #d8bdfc; color: #26274d; }
-            QPushButton#btnPrimary:pressed { background-color: #b78be0; color: #26274d; }
-
-            /* أزرار علامات التشكيل: لون ثابت مختلف لكل زر (لا يتغير مع الثيم) عشان
-               يبقوا مميزين عن بعض بصرياً، مع نص داكن ثابت #26274d يفضل واضح فوق
-               أي لون منهم، ولون أفتح شوية عند التمرير/الضغط */
-            QPushButton#btnMark0 { background-color: #f5e0dc; color: #26274d; font-size: 17px; }
-            QPushButton#btnMark0:hover { background-color: #f9ece9; }
-            QPushButton#btnMark0:pressed { background-color: #e8c9c3; }
-
-            QPushButton#btnMark1 { background-color: #f2cdcd; color: #26274d; font-size: 17px; }
-            QPushButton#btnMark1:hover { background-color: #f6dcdc; }
-            QPushButton#btnMark1:pressed { background-color: #e6b7b7; }
-
-            QPushButton#btnMark2 { background-color: #f5c2e7; color: #26274d; font-size: 17px; }
-            QPushButton#btnMark2:hover { background-color: #f9d7ef; }
-            QPushButton#btnMark2:pressed { background-color: #e8a9d9; }
-
-            QPushButton#btnMark3 { background-color: #cba6f7; color: #26274d; font-size: 17px; }
-            QPushButton#btnMark3:hover { background-color: #dbc0fa; }
-            QPushButton#btnMark3:pressed { background-color: #b78be0; }
-
-            QPushButton#btnMark4 { background-color: #b4befe; color: #26274d; font-size: 17px; }
-            QPushButton#btnMark4:hover { background-color: #c9d1ff; }
-            QPushButton#btnMark4:pressed { background-color: #9ba5e6; }
-
-            QPushButton#btnMark5 { background-color: #89b4fa; color: #26274d; font-size: 17px; }
-            QPushButton#btnMark5:hover { background-color: #a8c8fb; }
-            QPushButton#btnMark5:pressed { background-color: #6f9de0; }
-
-            QPushButton#btnMark6 { background-color: #74c7ec; color: #26274d; font-size: 17px; }
-            QPushButton#btnMark6:hover { background-color: #97d6f0; }
-            QPushButton#btnMark6:pressed { background-color: #5aabce; }
-
-            QPushButton#btnMark7 { background-color: #89dceb; color: #26274d; font-size: 17px; }
-            QPushButton#btnMark7:hover { background-color: #aae5f1; }
-            QPushButton#btnMark7:pressed { background-color: #6ac2d4; }
-
-            /* زر الحرف التالي: نص داكن #26274d، وخلفية #b6bafb. عند التمرير تتغير الخلفية لدرجة أفتح ويبقى النص ثابتاً */
-            QPushButton#btnNext { background-color: #b6bafb; color: #26274d; font-size: 18px; font-weight: 700; border-radius: 10px; }
-            QPushButton#btnNext:hover { background-color: #c7cbff; color: #26274d; }
-            QPushButton#btnNext:pressed { background-color: #9fa3e6; color: #26274d; }
-
-            QPushButton#btnCopy { background: transparent; border: 1px solid %6; color: %6; font-size: 13px; padding: 8px 14px; }
-            QPushButton#btnCopy:hover { background: %6; color: %2; }
-
-            QPushButton#btnSetting { background: %3; color: %1; border: 1px solid rgba(127,127,127,0.18); text-align: right; padding: 0 16px; }
-            QPushButton#btnSetting:hover { background: %4; }
-
-            QPushButton#btnThemeChoice { background: %3; color: %1; text-align: right; padding: 0 16px; border: 1px solid rgba(127,127,127,0.18); }
-            QPushButton#btnThemeChoice:hover { background: %6; color: %2; border: 1px solid %6; }
-
-            QPushButton#btnDialogPrimary { background: %7; color: %2; }
-            QPushButton#btnDialogPrimary:hover { background: %8; }
-            QPushButton#btnDialogSecondary { background: transparent; color: %1; border: 1px solid rgba(127,127,127,0.3); }
-            QPushButton#btnDialogSecondary:hover { background: %4; }
-
-            QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
-            QScrollBar::handle:vertical { background: rgba(127,127,127,0.35); border-radius: 4px; min-height: 24px; }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
-        )")
-        .arg(m_colors.Text, m_colors.Base, m_colors.Surface, m_colors.Hover, m_colors.Accent1,
-             m_colors.Accent2, m_colors.Accent3, m_colors.Accent4, m_colors.Danger);
-
-        this->setStyleSheet(qss);
-        if (m_words.size() > 0) updateCenterView(m_isWaitingForMarkAfterShadda);
-        update();
-    }
-
-    void buildMainLayout() {
-        m_mainContent = new QWidget(this);
-        auto* root = new QVBoxLayout(m_mainContent);
-        root->setContentsMargins(18, 14, 18, 14);
-        root->setSpacing(14);
-
-        auto* windowLayout = new QVBoxLayout(this);
-        windowLayout->setContentsMargins(0, 0, 0, 0);
-        windowLayout->addWidget(m_mainContent);
-
-        m_topBar = new QWidget(this);
-        auto* topRow = new QHBoxLayout(m_topBar);
-        topRow->setContentsMargins(0, 0, 0, 6);
-
-        m_hamburgerBtn = new QPushButton("☰");
-        m_hamburgerBtn->setObjectName("hamburgerBtn");
-        m_hamburgerBtn->setCursor(Qt::PointingHandCursor);
-        m_hamburgerBtn->setFixedSize(42, 42);
-        m_hamburgerBtn->setFont(QFont("Segoe UI", 18, QFont::Bold));
-        connect(m_hamburgerBtn, &QPushButton::clicked, this, &GlowWindow::toggleSidebar);
-
-        QLabel* titleLabel = new QLabel("نقرة  للتشكيل");
-        titleLabel->setObjectName("appTitle");
-
-        topRow->addWidget(m_hamburgerBtn);
-        topRow->addSpacing(10);
-        topRow->addWidget(titleLabel);
-        topRow->addStretch();
-        root->addWidget(m_topBar);
-
-        m_stackedWidget = new QStackedWidget(this);
-
-        m_mainMenuPage = new QWidget(this);
-        auto* mainPageLayout = new QVBoxLayout(m_mainMenuPage);
-        mainPageLayout->setContentsMargins(0, 0, 0, 0);
-
-        QScrollArea* scrollArea = new QScrollArea(this);
-        scrollArea->setWidgetResizable(true);
-        scrollArea->setFrameShape(QFrame::NoFrame);
-        scrollArea->setStyleSheet("background: transparent;");
-
-        QScroller::grabGesture(scrollArea->viewport(), QScroller::LeftMouseButtonGesture);
-        QScroller::grabGesture(scrollArea->viewport(), QScroller::TouchGesture);
-
-        QWidget* containerWidget = new QWidget();
-        containerWidget->setStyleSheet("background: transparent;");
-        m_dynamicLayout = new QBoxLayout(QBoxLayout::LeftToRight, containerWidget);
-        m_dynamicLayout->setContentsMargins(0, 10, 0, 10);
-        m_dynamicLayout->setSpacing(20);
-
-        m_rightPanel = new QWidget();
-        m_rightPanel->setObjectName("panelCard");
-        auto* rightCol = new QVBoxLayout(m_rightPanel);
-        rightCol->setContentsMargins(16, 16, 16, 16);
-        rightCol->setSpacing(10);
-        QLabel* lblInput = new QLabel("الصق نص هنا:");
-        lblInput->setObjectName("panelLabel");
-        m_inputText = new QTextEdit();
-        m_inputText->setPlaceholderText("أدخل الكلمات التي تود تشكيلها هنا...");
-        m_btnStartTashkeel = new RippleButton();
-        m_btnStartTashkeel->setText("ابدأ التشكيل");
-        m_btnStartTashkeel->setObjectName("btnPrimary");
-        m_btnStartTashkeel->setFixedHeight(55);
-        connect(m_btnStartTashkeel, &QPushButton::clicked, this, &GlowWindow::startTashkeel);
-        rightCol->addWidget(lblInput);
-        rightCol->addWidget(m_inputText);
-        rightCol->addWidget(m_btnStartTashkeel);
-
-        m_centerPanel = new QWidget();
-        m_centerPanel->setObjectName("panelCard");
-        auto* centerCol = new QVBoxLayout(m_centerPanel);
-        centerCol->setContentsMargins(16, 16, 16, 16);
-        centerCol->setSpacing(12);
-        m_lblCurrentWord = new QLabel("الكلمة");
-        m_lblCurrentWord->setObjectName("currentWordLabel");
-        m_lblCurrentWord->setAlignment(Qt::AlignCenter);
-        m_lblCurrentWord->setMinimumHeight(120);
-        m_lblCurrentWord->setWordWrap(true);
-
-        QGridLayout* gridMarks = new QGridLayout();
-        gridMarks->setSpacing(10);
-
-        struct DiacriticMark { QString name; QString unicode; };
-        QList<DiacriticMark> marks = {
-            {"فتحة", "َ"}, {"ضمة", "ُ"}, {"كسرة", "ِ"},
-            {"سكون", "ْ"}, {"شدة", "ّ"},
-            {"تنوين فتح", "ً"}, {"تنوين ضم", "ٌ"}, {"تنوين كسر", "ٍ"}
-        };
-
-        int row = 0, col = 0, markIdx = 0;
-        for (const auto& mark : marks) {
-            RippleButton* btnMark = new RippleButton();
-            btnMark->setText(mark.name + " (" + mark.unicode + ")");
-            // كل زر له اسم كائن مستقل (btnMark0..btnMark7) عشان ياخد لون خاص
-            // به من الـ QSS بدل ما كل الأزرار تتلون بنفس اللون الموحّد.
-            btnMark->setObjectName(QString("btnMark%1").arg(markIdx));
-            btnMark->setFixedHeight(52);
-            connect(btnMark, &QPushButton::clicked, [this, mark]() { applyMark(mark.unicode); });
-            gridMarks->addWidget(btnMark, row, col);
-            col++;
-            if (col > 2) { col = 0; row++; }
-            markIdx++;
-        }
-
-        m_btnNextChar = new RippleButton();
-        m_btnNextChar->setText("الحرف التالي");
-        m_btnNextChar->setObjectName("btnNext");
-        m_btnNextChar->setFixedHeight(58);
-        connect(m_btnNextChar, &QPushButton::clicked, this, &GlowWindow::advanceChar);
-
-        centerCol->addWidget(m_lblCurrentWord);
-        centerCol->addLayout(gridMarks);
-        centerCol->addStretch();
-        centerCol->addWidget(m_btnNextChar);
-
-        m_leftPanel = new QWidget();
-        m_leftPanel->setObjectName("panelCard");
-        auto* leftCol = new QVBoxLayout(m_leftPanel);
-        leftCol->setContentsMargins(16, 16, 16, 16);
-        leftCol->setSpacing(10);
-        auto* leftTopRow = new QHBoxLayout();
-        QLabel* lblOutput = new QLabel("النص المشكّل:");
-        lblOutput->setObjectName("panelLabel");
-        m_btnCopy = new RippleButton();
-        m_btnCopy->setText("نسخ");
-        m_btnCopy->setObjectName("btnCopy");
-        m_btnCopy->setFixedHeight(40);
-        connect(m_btnCopy, &QPushButton::clicked, this, [this]() {
-            QGuiApplication::clipboard()->setText(m_outputText->toPlainText());
-            QMessageBox::information(this, "نجاح", "تم نسخ النص بنجاح.");
-        });
-        leftTopRow->addWidget(lblOutput);
-        leftTopRow->addStretch();
-        leftTopRow->addWidget(m_btnCopy);
-
-        m_outputText = new QTextEdit();
-        m_outputText->setReadOnly(true);
-        leftCol->addLayout(leftTopRow);
-        leftCol->addWidget(m_outputText);
-
-        m_dynamicLayout->addWidget(m_rightPanel);
-        m_dynamicLayout->addWidget(m_centerPanel);
-        m_dynamicLayout->addWidget(m_leftPanel);
-
-        scrollArea->setWidget(containerWidget);
-        mainPageLayout->addWidget(scrollArea);
-
-        m_stackedWidget->addWidget(m_mainMenuPage);
-
-        m_settingsPage = new QWidget(this);
-        auto* settingsLayout = new QVBoxLayout(m_settingsPage);
-        settingsLayout->setContentsMargins(0, 10, 0, 0);
-        settingsLayout->setSpacing(12);
-
-        m_btnToggleTheme = new RippleButton();
-        m_btnToggleTheme->setObjectName("btnSetting");
-        m_btnToggleTheme->setFixedHeight(55);
-
-        connect(m_btnToggleTheme, &QPushButton::clicked, this, [this]() {
-            ThemeSelectionDialog themeDlg(this);
-            themeDlg.setStyleSheet(this->styleSheet());
-            if (themeDlg.exec() == QDialog::Accepted) {
-                int selection = themeDlg.selectedTheme;
-                if (selection >= 0 && selection <= 4) {
-                    m_isCustomTheme = false;
-                    applyTheme(static_cast<ThemeMode>(selection));
-                } else if (selection == 5) {
-                    CustomThemeDialog customDlg(m_colors, this);
-                    customDlg.setStyleSheet(this->styleSheet());
-                    if (customDlg.exec() == QDialog::Accepted) {
-                        applyCustomTheme(customDlg.m_colors);
-                    }
-                }
-            }
-        });
-
-        settingsLayout->addWidget(m_btnToggleTheme);
-        settingsLayout->addStretch();
-        m_stackedWidget->addWidget(m_settingsPage);
-
-        root->addWidget(m_stackedWidget);
-    }
-
-    void buildSidebar() {
-        m_sidebar = new QWidget(this);
-        m_sidebar->setObjectName("sidebar");
-        m_sidebar->setGeometry(width(), 0, 260, height());
-
-        auto* layout = new QVBoxLayout(m_sidebar);
-        layout->setContentsMargins(12, 64, 12, 20);
-        layout->setSpacing(8);
-
-        QLabel* brand = new QLabel("نقرة");
-        brand->setObjectName("sidebarBrand");
-        layout->addWidget(brand);
-        layout->addSpacing(14);
-
-        m_btnNavMain = new RippleButton();
-        m_btnNavMain->setText("🏠  التشكيل");
-        m_btnNavMain->setObjectName("btnSidebarItem");
-        m_btnNavMain->setFixedHeight(48);
-
-        m_btnNavSettings = new RippleButton();
-        m_btnNavSettings->setText("⚙️  الإعدادات");
-        m_btnNavSettings->setObjectName("btnSidebarItem");
-        m_btnNavSettings->setFixedHeight(48);
-
-        layout->addWidget(m_btnNavMain);
-        layout->addWidget(m_btnNavSettings);
-        layout->addStretch();
-
-        connect(m_btnNavMain, &QPushButton::clicked, this, [this]{
-            m_stackedWidget->setCurrentIndex(0);
-            toggleSidebar();
-        });
-        connect(m_btnNavSettings, &QPushButton::clicked, this, [this]{
-            m_stackedWidget->setCurrentIndex(1);
-            toggleSidebar();
-        });
-    }
-
-    QPointF m_currentGlowPos, m_targetGlowPos;
-    QTimer* m_glowTimer{};
-    ThemeMode m_theme;
-    ThemeColors m_colors;
-    bool m_isCustomTheme = false;
+    QBoxLayout* m_dynamicLayout{};
+    QTextEdit *m_inputText{}, *m_outputText{};
+    QLabel *m_lblCurrentWord{};
+    QPushButton *m_btnStartTashkeel{}, *m_btnNextChar{}, *m_btnCopy{};
 
     QStringList m_words;
     QStringList m_processedWords;
@@ -695,25 +396,6 @@ private:
     int m_currentCharIdx = 0;
     QString m_currentWordProcessed = "";
     bool m_isWaitingForMarkAfterShadda = false;
-
-    bool m_isSidebarOpen = false;
-    QWidget *m_sidebar{};
-    QWidget *m_mainContent{};
-    QWidget *m_topBar{};
-    QStackedWidget *m_stackedWidget{};
-    QWidget *m_mainMenuPage{}, *m_settingsPage{};
-    QPushButton *m_hamburgerBtn{};
-    RippleButton *m_btnNavMain{}, *m_btnNavSettings{};
-    RippleButton *m_btnToggleTheme{};
-
-    QBoxLayout* m_dynamicLayout{};
-    QWidget* m_rightPanel{};
-    QWidget* m_centerPanel{};
-    QWidget* m_leftPanel{};
-
-    QTextEdit *m_inputText{}, *m_outputText{};
-    QLabel *m_lblCurrentWord{};
-    RippleButton *m_btnStartTashkeel{}, *m_btnNextChar{}, *m_btnCopy{};
 };
 
 int main(int argc, char* argv[]) {
@@ -727,11 +409,11 @@ int main(int argc, char* argv[]) {
     app.setOrganizationName("Naqrah");
 
     QFont font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
-    font.setPointSize(12);
+    font.setPointSize(11);
     font.setFamily("Segoe UI, Tahoma, Noto Sans Arabic, sans-serif");
     app.setFont(font);
 
-    GlowWindow window;
+    MainWindow window;
     window.show();
     return app.exec();
 }

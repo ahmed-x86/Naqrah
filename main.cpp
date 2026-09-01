@@ -12,6 +12,7 @@
 #include <QMessageBox>
 #include <QResizeEvent>
 #include <QFontDatabase>
+#include <QScrollArea>
 
 class MainWindow : public QWidget {
     Q_OBJECT
@@ -89,7 +90,7 @@ private:
                 border-radius: 6px;
                 padding: 10px 16px;
                 font-weight: bold;
-                font-size: 14px;
+                font-size: 15px;
             }
             QPushButton#btnPrimary:hover {
                 background-color: #e4e4e7;
@@ -104,7 +105,7 @@ private:
                 border-radius: 6px;
                 padding: 10px 16px;
                 font-weight: bold;
-                font-size: 13px;
+                font-size: 14px;
             }
             QPushButton#btnSecondary:hover {
                 background-color: #27272a;
@@ -176,12 +177,19 @@ private:
         
         mainLayout->addWidget(header);
 
+        // Scroll Area setup
+        QScrollArea* scrollArea = new QScrollArea(this);
+        scrollArea->setWidgetResizable(true);
+        scrollArea->setFrameShape(QFrame::NoFrame);
+        scrollArea->setStyleSheet("background: transparent;");
+
         // Content Container
         QWidget* contentWidget = new QWidget();
+        contentWidget->setStyleSheet("background: transparent;");
         auto* contentLayout = new QVBoxLayout(contentWidget);
-        contentLayout->setContentsMargins(32, 32, 32, 32);
+        contentLayout->setContentsMargins(24, 24, 24, 24);
 
-        // Main 3-column layout
+        // Main 3-column layout (will wrap to column on mobile)
         m_dynamicLayout = new QBoxLayout(QBoxLayout::LeftToRight);
         m_dynamicLayout->setSpacing(24);
 
@@ -191,10 +199,14 @@ private:
         
         m_inputText = new QTextEdit();
         m_inputText->setPlaceholderText("اكتب أو الصق النص هنا...");
+        m_inputText->setMinimumHeight(150);
+        m_inputText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        
         m_btnStartTashkeel = new QPushButton("تشكيل");
         m_btnStartTashkeel->setObjectName("btnPrimary");
         m_btnStartTashkeel->setCursor(Qt::PointingHandCursor);
-        m_btnStartTashkeel->setMinimumHeight(44);
+        m_btnStartTashkeel->setMinimumHeight(54);
+        m_btnStartTashkeel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         
         inputLayout->addWidget(m_inputText);
         inputLayout->addSpacing(12);
@@ -212,7 +224,7 @@ private:
         m_lblCurrentWord->setWordWrap(true);
 
         QGridLayout* gridMarks = new QGridLayout();
-        gridMarks->setSpacing(10);
+        gridMarks->setSpacing(14); // Increased spacing between buttons
 
         struct DiacriticMark { QString name; QString unicode; };
         QList<DiacriticMark> marks = {
@@ -226,7 +238,8 @@ private:
             QPushButton* btnMark = new QPushButton(mark.name + " (ـ" + mark.unicode + ")");
             btnMark->setObjectName("btnMark");
             btnMark->setCursor(Qt::PointingHandCursor);
-            btnMark->setMinimumHeight(52);
+            btnMark->setMinimumHeight(64); // Touch friendly
+            btnMark->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
             connect(btnMark, &QPushButton::clicked, [this, mark]() { applyMark(mark.unicode); });
             gridMarks->addWidget(btnMark, row, col);
             col++;
@@ -236,13 +249,14 @@ private:
         m_btnNextChar = new QPushButton("الحرف التالي");
         m_btnNextChar->setObjectName("btnSecondary");
         m_btnNextChar->setCursor(Qt::PointingHandCursor);
-        m_btnNextChar->setMinimumHeight(44);
+        m_btnNextChar->setMinimumHeight(54);
+        m_btnNextChar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(m_btnNextChar, &QPushButton::clicked, this, &MainWindow::advanceChar);
 
         tashkeelLayout->addWidget(m_lblCurrentWord);
         tashkeelLayout->addSpacing(10);
         tashkeelLayout->addLayout(gridMarks);
-        tashkeelLayout->addSpacing(16);
+        tashkeelLayout->addSpacing(20);
         tashkeelLayout->addWidget(m_btnNextChar);
 
         // 3. Output Card
@@ -251,10 +265,15 @@ private:
         
         m_outputText = new QTextEdit();
         m_outputText->setReadOnly(true);
+        m_outputText->setMinimumHeight(150);
+        m_outputText->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        
         m_btnCopy = new QPushButton("نسخ النص");
         m_btnCopy->setObjectName("btnSecondary");
         m_btnCopy->setCursor(Qt::PointingHandCursor);
-        m_btnCopy->setMinimumHeight(44);
+        m_btnCopy->setMinimumHeight(54);
+        m_btnCopy->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        
         connect(m_btnCopy, &QPushButton::clicked, this, [this]() {
             QGuiApplication::clipboard()->setText(m_outputText->toPlainText());
             QMessageBox msgBox(this);
@@ -272,7 +291,9 @@ private:
         m_dynamicLayout->addWidget(outputCard, 1);
 
         contentLayout->addLayout(m_dynamicLayout);
-        mainLayout->addWidget(contentWidget);
+        
+        scrollArea->setWidget(contentWidget);
+        mainLayout->addWidget(scrollArea);
     }
 
     QWidget* createCard(const QString& titleText, const QString& subtitleText) {

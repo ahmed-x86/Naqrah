@@ -13,6 +13,7 @@ jobs:
   build-desktop:
     name: Build on ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -40,8 +41,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # كاش لمكتبات Rust يسرّع البناء التالي بشكل كبير
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}-desktop
+
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.0.0"
+        run: cargo install tauri-cli --version "^2.0.0" --locked
 
       # 3. بناء تطبيق سطح المكتب
       - name: Build Tauri App
@@ -81,7 +88,7 @@ jobs:
             *.tar.gz
 
   build-android:
-    name: Build on Android
+    name: Build Android APK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -108,8 +115,13 @@ jobs:
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.0.0"
+        run: cargo install tauri-cli --version "^2.0.0" --locked
 
       # تعديل الباكدج نيم وبناء مجلد أندرويد برمجياً
       - name: Set Package Name & Init Android

@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  TAURI_CLI_VERSION: "2.0.0"
+
 jobs:
   build-desktop:
     name: Build on ${{ matrix.os }}
@@ -41,14 +44,26 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # كاش لمكتبات Rust يسرّع البناء التالي بشكل كبير
+      # كاش لمكتبات ومشروع Rust (target/, registry) - يسرّع الكومبايل نفسه
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}-desktop
+          key: desktop
+          shared-key: ${{ matrix.os }}-desktop
+
+      # كاش منفصل لأداة tauri-cli نفسها كـ binary جاهز - يوفر وقت تثبيتها بالكامل
+      - name: Cache Tauri CLI binary
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-tauri
+            ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-${{ runner.os }}-v${{ env.TAURI_CLI_VERSION }}
 
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.0.0" --locked
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
 
       # 3. بناء تطبيق سطح المكتب
       - name: Build Tauri App
@@ -87,6 +102,9 @@ jobs:
             *.zip
             *.tar.gz
 
+  # ملاحظة: الـ job ده بيشتغل على ubuntu-latest برضو، لكن ده مش تكرار لبناء Linux desktop.
+  # ubuntu هنا مجرد "runner" (بيئة تشغيل) لبناء APK الأندرويد عن طريق NDK + Tauri Android.
+  # الناتج هنا (.apk) مختلف تمامًا عن ناتج build-desktop (.tar.gz / .zip).
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
@@ -119,9 +137,26 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: android
+          shared-key: android
+
+      # كاش منفصل لأداة tauri-cli نفسها - نفس الفكرة بتاعة build-desktop
+      - name: Cache Tauri CLI binary
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-${{ runner.os }}-v${{ env.TAURI_CLI_VERSION }}
 
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.0.0" --locked
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
+
+      # كاش مجلد gen/android لتفادي إعادة تهيئة مشروع الأندرويد بالكامل كل مرة
+      - name: Cache Android project
+        uses: actions/cache@v4
+        with:
+          path: gen/android
+          key: android-gen-${{ hashFiles('tauri.conf.json') }}
 
       # تعديل الباكدج نيم وبناء مجلد أندرويد برمجياً
       - name: Set Package Name & Init Android
@@ -129,7 +164,9 @@ jobs:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           sed -i 's/"com.naqrah.dev"/"com.ahmed-x86.nagrah"/g' tauri.conf.json
-          cargo tauri android init
+          if [ ! -d "gen/android" ]; then
+            cargo tauri android init
+          fi
 
       - name: Build APK
         env:

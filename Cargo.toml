@@ -1,0 +1,19 @@
+[package]
+name = "naqrah"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = "2.0.0"
+
+[dependencies]
+tauri = { version = "2.0.0", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+panic = "abort"      # إزالة أكواد تتبع الأخطاء (وفر مساحة ورام)
+codegen-units = 1    # السماح للمترجم برؤية الكود كاملاً لتحسينه (يبطئ البناء قليلاً لكن يصغر الحجم)
+lto = true           # Link Time Optimization (يحذف أي كود أو دوال غير مستخدمة نهائياً)
+opt-level = "z"      # تحسين البناء لتقليل الحجم (Size) بدلاً من السرعة
+strip = true         # حذف الرموز ومعلومات التنقيح (Debug Symbols) بالكامل

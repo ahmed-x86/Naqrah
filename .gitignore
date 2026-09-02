@@ -11,3 +11,6 @@ build-win
 Naqrah.elf
 Naqrah_autogen
 Naqrah
+target
+gen
+auto_commit.shnaqrah

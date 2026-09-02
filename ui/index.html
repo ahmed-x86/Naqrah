@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Naqrah - نقرة</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-right">
+            <div class="logo-box"></div>
+            <h1 class="app-title">نقرة - Naqrah</h1>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <div class="dashboard-grid">
+            <!-- العمود الأول: النص المدخل -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">النص المدخل</h2>
+                    <p class="card-subtitle">أدخل النص الذي تود تشكيله هنا</p>
+                </div>
+                <div class="card-content flex-grow">
+                    <textarea id="inputText" class="textarea" placeholder="أهلاً بك..."></textarea>
+                </div>
+                <div class="card-footer">
+                    <button id="btnStartTashkeel" class="btn btn-primary w-full">ابدأ التشكيل</button>
+                </div>
+            </div>
+
+            <!-- العمود الثاني: لوحة التشكيل -->
+            <div class="card">
+                <div class="card-header text-center">
+                    <h2 class="card-title">لوحة التشكيل</h2>
+                    <p class="card-subtitle">اختر الحركات المناسبة للحرف المظلل</p>
+                </div>
+                <div class="card-content flex-grow flex-center">
+                    <div id="currentWordLabel" class="word-display">الكلمة</div>
+                    <div class="marks-grid">
+                        <button class="btn btn-outline btnMark" data-mark="َ">فتحة (ـَ)</button>
+                        <button class="btn btn-outline btnMark" data-mark="ُ">ضمة (ـُ)</button>
+                        <button class="btn btn-outline btnMark" data-mark="ِ">كسرة (ـِ)</button>
+                        <button class="btn btn-outline btnMark" data-mark="ْ">سكون (ـْ)</button>
+                        <button class="btn btn-outline btnMark" data-mark="ّ">شدة (ـّ)</button>
+                        <button class="btn btn-outline btnMark" data-mark="ً">تنوين فتح (ـً)</button>
+                        <button class="btn btn-outline btnMark" data-mark="ٌ">تنوين ضم (ـٌ)</button>
+                        <button class="btn btn-outline btnMark" data-mark="ٍ">تنوين كسر (ـٍ)</button>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button id="btnNextChar" class="btn btn-secondary w-full">إنهاء</button>
+                </div>
+            </div>
+
+            <!-- العمود الثالث: النتيجة -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">النتيجة</h2>
+                    <p class="card-subtitle">النص النهائي المشكّل</p>
+                </div>
+                <div class="card-content flex-grow">
+                    <textarea id="outputText" class="textarea" readonly placeholder="ستظهر النتيجة هنا..."></textarea>
+                </div>
+                <div class="card-footer">
+                    <button id="btnCopy" class="btn btn-outline w-full">نسخ النص</button>
+                </div>
+            </div>
+        </div>
+    </main>
+    <script src="main.js"></script>
+</body>
+</html>

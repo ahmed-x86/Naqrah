@@ -16,12 +16,8 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            qt_host: linux
-            qt_arch: gcc_64
             artifact: Naqrah-Linux
           - os: windows-latest
-            qt_host: windows
-            qt_arch: win64_mingw
             artifact: Naqrah-Windows
 
     runs-on: ${{ matrix.os }}
@@ -29,50 +25,52 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # 1. إعداد بيئة لينكس (Tauri dependencies + UPX)
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev
-
-      - name: Setup Qt
-        uses: jurplel/install-qt-action@v3
-        with:
-          version: '6.5.3'
-          host: ${{ matrix.qt_host }}
-          arch: ${{ matrix.qt_arch }}
-          extra: '--base https://download.qt.io'
-
-      - name: Build Project (Windows)
-        if: runner.os == 'Windows'
         run: |
-          mkdir build
-          cd build
-          cmake .. -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
-          cmake --build .
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf upx-ucl
 
-      - name: Build Project (Linux)
+      # 2. إعداد بيئة ويندوز (UPX)
+      - name: Install UPX (Windows)
+        if: runner.os == 'Windows'
+        run: choco install upx
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0.0"
+
+      # 3. بناء تطبيق سطح المكتب
+      - name: Build Tauri App
+        run: cargo tauri build
+
+      # 4. ضغط الملفات التنفيذية لأقصى درجة (Extreme Compression)
+      - name: Compress Linux Binary
+        if: runner.os == 'Linux'
+        run: upx --best --lzma target/release/naqrah || true
+
+      - name: Compress Windows Binary
+        if: runner.os == 'Windows'
+        run: upx --best --lzma target/release/naqrah.exe || true
+
+      # 5. التغليف والتجهيز للرفع
+      - name: Package Linux
         if: runner.os == 'Linux'
         run: |
-          mkdir build
-          cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Release
-          cmake --build .
+          mkdir Naqrah-Linux
+          cp target/release/naqrah Naqrah-Linux/
+          tar -czvf Naqrah-Linux.tar.gz Naqrah-Linux
 
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path Naqrah-Windows
-          $exe = if (Test-Path "build\Naqrah.exe") { "build\Naqrah.exe" } else { "build\Release\Naqrah.exe" }
-          Copy-Item $exe -Destination Naqrah-Windows\
-          windeployqt --compiler-runtime Naqrah-Windows\Naqrah.exe
+          Copy-Item target\release\naqrah.exe -Destination Naqrah-Windows\
           Compress-Archive -Path Naqrah-Windows -DestinationPath Naqrah-Windows.zip
-
-      - name: Package Linux
-        if: runner.os == 'Linux'
-        run: |
-          mkdir Naqrah-Linux
-          cp build/Naqrah Naqrah-Linux/
-          tar -czvf Naqrah-Linux.tar.gz Naqrah-Linux
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -98,93 +96,43 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Qt Desktop (Host tools)
-        uses: jurplel/install-qt-action@v3
+      # NDK ضروري جداً لبناء أكواد Rust للأندرويد
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
-          version: '6.5.3'
-          host: 'linux'
-          arch: 'gcc_64'
-          extra: '--base https://download.qt.io'
+          ndk-version: r26d
 
-      # لقيت إن QT_ROOT_DIR بيطلع فاضي في نسخة v3 من الأداة دي أحياناً (باگ معروف وموثّق في المشروع نفسه)
-      # فبدل ما نعتمد عليه، هنحسب المسار يدوياً بنفسنا، لأننا عارفين بالظبط
-      # إزاي الأداة بتنظم المجلدات (المسار الافتراضي = مجلد واحد فوق الريبو + Qt/{version}/{arch})
-      - name: Compute Host Qt Path
-        run: |
-          HOST_QT_PATH="$(dirname "$GITHUB_WORKSPACE")/Qt/6.5.3/gcc_64"
-          echo "QT_HOST_PATH=$HOST_QT_PATH" >> $GITHUB_ENV
-          echo ">>> Computed host Qt path: $HOST_QT_PATH"
-
-      # تثبيت Qt للأندرويد مع السماح للأداة بضبط الـ NDK والـ SDK المناسب تلقائياً دون تعارض
-      # extra: '--base ...' بيجبر التحميل يستخدم سيرفر Qt الرسمي بدل الميررات الفرعية
-      # اللي بتقع أحياناً بمشاكل شهادة SSL زي اللي حصلت هنا (ftp1.nluug.nl)
-      - name: Setup Qt for Android
-        uses: jurplel/install-qt-action@v3
+      - name: Setup Rust for Android
+        uses: dtolnay/rust-toolchain@stable
         with:
-          version: '6.5.3'
-          target: 'android'
-          arch: 'android_arm64_v8a'
-          extra: '--base https://download.qt.io'
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
-      # خطوة تأكيد بس: بتتحقق إن المسار المحسوب فيه qmake فعلاً قبل ما نكمل
-      - name: Verify QT_HOST_PATH
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0.0"
+
+      # تعديل الباكدج نيم وبناء مجلد أندرويد برمجياً
+      - name: Set Package Name & Init Android
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          echo ">>> QT_HOST_PATH = $QT_HOST_PATH"
-          if [ ! -x "$QT_HOST_PATH/bin/qmake" ]; then
-            echo "::error::مفيش qmake في $QT_HOST_PATH — المسار غلط، لازم نراجع اسم النسخة/الـarch"
-            find "$(dirname "$GITHUB_WORKSPACE")" -maxdepth 3 -iname "qmake" 2>/dev/null
-            exit 1
-          fi
+          sed -i 's/"com.naqrah.dev"/"com.ahmed-x86.nagrah"/g' tauri.conf.json
+          cargo tauri android init
 
-      # مشكلة تالتة: aapt2 اللي بييجي مع قالب Qt (AGP 7.4.1 قديمة) مش قادر يقرأ
-      # جدول الموارد (resources.arsc) بتاع أندرويد 34+ الجديد، وبيدي خطأ
-      # "RES_TABLE_TYPE_TYPE entry offsets overlap actual entry data".
-      # غلطة المرة اللي فاتت: شلنا المنصة الوحيدة (36-ext19) من غير ما نركّب
-      # بديل، فبقى مفيش platforms خالص. دلوقتي هنركّب android-33 صراحةً
-      # الأول (نفس النسخة اللي AGP 7.4.1 متوافقة معاها زي ما اللوج قال)،
-      # وبعدين نشيل أي حاجة أحدث منها بس.
-      - name: Pin Android platform to a stable SDK level
-        run: |
-          echo ">>> Installing platforms;android-33 explicitly..."
-          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" "platforms;android-33" "build-tools;33.0.2"
-
-          for d in "$ANDROID_SDK_ROOT"/platforms/android-*; do
-            [ -d "$d" ] || continue
-            base=$(basename "$d")
-            [ "$base" = "android-33" ] && continue
-            num=$(echo "$base" | grep -oP '(?<=android-)[0-9]+' | head -1)
-            if [ -n "$num" ] && [ "$num" -gt 33 ]; then
-              echo "Removing incompatible platform: $base"
-              sudo rm -rf "$d"
-            fi
-          done
-          echo ">>> المنصات المتبقية:"
-          ls "$ANDROID_SDK_ROOT/platforms"
-
-      # مشكلة رابعة: بنينا نسخة "Release" من الأندرويد، والنسخة دي محتاجة توقيع (signing)
-      # صريح وإلا الأندرويد يرفضها بـ"الحزمة تبدو غير صالحة" (وده اللي حصل بالظبط).
-      # مؤقتاً هنبني نسخة "Debug" بدل كده، لأنها بتتوقّع تلقائياً بمفتاح debug
-      # افتراضي وتتثبت عادي على أي جهاز — كويسة للتجربة، لكن مش مناسبة لنشر رسمي.
-      # لما تكون جاهز تنشر بجد، هنعمل keystore حقيقي ونوقّع بيه نسخة الـRelease.
       - name: Build APK
-        run: |
-          mkdir build
-          cd build
-          # لازم نمرر QT_HOST_PATH صراحةً، وإلا CMake مش هيلاقي أدوات الـ host (moc/rcc/androiddeployqt)
-          qt-cmake .. -DCMAKE_BUILD_TYPE=Debug -DANDROID_ABI=arm64-v8a -DQT_HOST_PATH="$QT_HOST_PATH"
-          cmake --build .
-          # target الـ apk مش جزء من البناء الافتراضي في Qt6، لازم نطلبه صراحةً
-          cmake --build . --target apk
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: cargo tauri android build --apk
 
       - name: Find and Copy APK
         run: |
-          find build -name "*.apk" -exec cp {} Naqrah-Android-arm64-v8a.apk \;
+          find gen/android/app/build/outputs/apk -name "*.apk" -exec cp {} Naqrah-Android.apk \;
 
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Naqrah-Android
-          path: Naqrah-Android-arm64-v8a.apk
+          path: Naqrah-Android.apk
 
   release:
     name: Create GitHub Release

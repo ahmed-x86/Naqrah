@@ -166,15 +166,14 @@ jobs:
             cargo tauri android init
           fi
 
-      # فك تشفير الـ keystore من السيكرت وحفظه كملف مؤقت للتوقيع.
-      # لو السيكرتات دي مش موجودة، الخطوة هتفشل بوضوح بدل ما تبني APK غير موقّع بصمت.
+      # فك تشفير الـ keystore من السيكرت وحفظه كملف مؤقت للتوقيع
       - name: Decode Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > naqrah-release.keystore
 
-      # ملف الإعدادات اللي Tauri Android بيدور عليه أثناء البناء عشان يوقّع الـ APK تلقائيًا
+      # ملف الإعدادات اللي Gradle هيقرأه (بعد ما نربطه بـ build.gradle.kts في الخطوة الجاية)
       - name: Create Signing Properties
         run: |
           cat > gen/android/keystore.properties <<EOF
@@ -182,6 +181,45 @@ jobs:
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           storeFile=${{ github.workspace }}/naqrah-release.keystore
           EOF
+
+      # الخطوة الحاسمة: Tauri Android CLI مبيربطش keystore.properties بالـ signing تلقائيًا.
+      # لازم نضيف signingConfigs في build.gradle.kts يدويًا ونربطها بـ buildTypes.release،
+      # وإلا الـ APK هيتبني "unsigned" حتى لو keystore.properties موجود وصحيح.
+      - name: Inject Signing Config into Gradle
+        run: |
+          GRADLE_FILE="gen/android/app/build.gradle.kts"
+
+          if ! grep -q "keystore.properties" "$GRADLE_FILE"; then
+            # إضافة الـ imports في أول الملف
+            sed -i '1i import java.util.Properties\nimport java.io.FileInputStream' "$GRADLE_FILE"
+
+            # إضافة تحميل keystoreProperties قبل بلوك android {
+            sed -i '/^android {/i \
+          val keystorePropertiesFile = rootProject.file("keystore.properties")\
+          val keystoreProperties = Properties()\
+          if (keystorePropertiesFile.exists()) {\
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))\
+          }\
+          ' "$GRADLE_FILE"
+
+            # إضافة signingConfigs جوه بلوك android { بعد أول سطر مباشرة
+            sed -i '/^android {/a \
+              signingConfigs {\
+                  create("release") {\
+                      keyAlias = keystoreProperties["keyAlias"] as String\
+                      keyPassword = keystoreProperties["password"] as String\
+                      storeFile = file(keystoreProperties["storeFile"] as String)\
+                      storePassword = keystoreProperties["password"] as String\
+                  }\
+              }\
+          ' "$GRADLE_FILE"
+
+            # ربط signingConfig بـ buildTypes.release
+            sed -i '/getByName("release")/a \
+                  signingConfig = signingConfigs.getByName("release")' "$GRADLE_FILE"
+          fi
+
+          cat "$GRADLE_FILE"
 
       - name: Build APK
         env:
@@ -195,7 +233,12 @@ jobs:
 
       - name: Find and Copy APK
         run: |
-          find gen/android/app/build/outputs/apk -name "*.apk" -exec cp {} Naqrah-Android.apk \;
+          find gen/android/app/build/outputs/apk -name "*release*.apk" ! -name "*unsigned*" -exec cp {} Naqrah-Android.apk \;
+          if [ ! -f Naqrah-Android.apk ]; then
+            echo "::error::لم يتم إيجاد APK موقّع! تأكد من صحة الـ signing config."
+            find gen/android/app/build/outputs/apk -name "*.apk"
+            exit 1
+          fi
 
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4

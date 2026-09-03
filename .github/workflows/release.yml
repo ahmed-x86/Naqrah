@@ -34,7 +34,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf upx-ucl rpm
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf upx-ucl rpm zstd
 
       # 2. إعداد بيئة ويندوز (UPX)
       - name: Install UPX (Windows)
@@ -204,11 +204,9 @@ jobs:
           EOF
           sed -i 's/^          //' "${PKG_ROOT}/.PKGINFO"
 
-          # إنشاء .MTREE (قائمة الملفات)
-          cd "${PKG_ROOT}"
-          find . -type f | sed 's|^\./||' > .MTREE_list
           # بناء الحزمة: .PKGINFO أولاً ثم باقي الملفات
-          bsdtar -czf ../../../Naqrah-Linux.pkg.tar.zst --zstd .PKGINFO $(find . -path ./.PKGINFO -prune -o -type f -print | sed 's|^\./||')
+          cd "${PKG_ROOT}"
+          tar --zstd -cf ../../../Naqrah-Linux.pkg.tar.zst .PKGINFO usr/
           cd ../../../
 
       - name: Upload .pkg.tar.zst Artifact

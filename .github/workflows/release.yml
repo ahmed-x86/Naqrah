@@ -150,11 +150,12 @@ jobs:
         run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
 
       # كاش مجلد gen/android لتفادي إعادة تهيئة مشروع الأندرويد بالكامل كل مرة
+      # v2: cache key متغير عشان نتخلص من أي نسخة مكسورة محفوظة سابقاً
       - name: Cache Android project
         uses: actions/cache@v4
         with:
           path: gen/android
-          key: android-gen-${{ hashFiles('tauri.conf.json') }}
+          key: android-gen-v2-${{ hashFiles('tauri.conf.json') }}
 
       # تعديل الباكدج نيم وبناء مجلد أندرويد برمجياً
       - name: Set Package Name & Init Android
@@ -185,13 +186,22 @@ jobs:
       # الخطوة الحاسمة: Tauri Android CLI مبيربطش keystore.properties بالـ signing تلقائيًا.
       # لازم نضيف signingConfigs في build.gradle.kts يدويًا ونربطها بـ buildTypes.release،
       # وإلا الـ APK هيتبني "unsigned" حتى لو keystore.properties موجود وصحيح.
+      #
+      # الحل: بدل sed اللي ممكن يكرر الـ imports، نقرأ الملف الأصلي ونكتبه من الصفر بشكل آمن.
       - name: Inject Signing Config into Gradle
         run: |
           GRADLE_FILE="gen/android/app/build.gradle.kts"
 
           if ! grep -q "keystore.properties" "$GRADLE_FILE"; then
-            # إضافة الـ imports في أول الملف
-            sed -i '1i import java.util.Properties\nimport java.io.FileInputStream' "$GRADLE_FILE"
+            # إضافة import java.io.FileInputStream لو مش موجود (java.util.Properties موجود أصلاً من Tauri)
+            if ! grep -q "import java.io.FileInputStream" "$GRADLE_FILE"; then
+              sed -i '1i import java.io.FileInputStream' "$GRADLE_FILE"
+            fi
+
+            # إضافة import java.util.Properties بس لو مش موجود أصلاً
+            if ! grep -q "import java.util.Properties" "$GRADLE_FILE"; then
+              sed -i '1i import java.util.Properties' "$GRADLE_FILE"
+            fi
 
             # إضافة تحميل keystoreProperties قبل بلوك android {
             sed -i '/^android {/i \

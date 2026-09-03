@@ -44,14 +44,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      # كاش لمكتبات ومشروع Rust (target/, registry) - يسرّع الكومبايل نفسه
+      # كاش لمكتبات ومشروع Rust (target/, registry)
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: desktop
           shared-key: ${{ matrix.os }}-desktop
 
-      # كاش منفصل لأداة tauri-cli نفسها كـ binary جاهز - يوفر وقت تثبيتها بالكامل
+      # كاش binary أداة tauri-cli نفسها. المفتاح هنا لازم يتطابق بالظبط بين
+      # خطوة "Cache" وخطوة "Install" عشان cache-hit يشتغل صح.
       - name: Cache Tauri CLI binary
         id: cache-tauri-cli
         uses: actions/cache@v4
@@ -59,7 +59,7 @@ jobs:
           path: |
             ~/.cargo/bin/cargo-tauri
             ~/.cargo/bin/cargo-tauri.exe
-          key: tauri-cli-${{ runner.os }}-v${{ env.TAURI_CLI_VERSION }}
+          key: tauri-cli-bin-${{ runner.os }}-${{ env.TAURI_CLI_VERSION }}
 
       - name: Install Tauri CLI
         if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
@@ -136,16 +136,14 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          key: android
           shared-key: android
 
-      # كاش منفصل لأداة tauri-cli نفسها - نفس الفكرة بتاعة build-desktop
       - name: Cache Tauri CLI binary
         id: cache-tauri-cli
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-tauri
-          key: tauri-cli-${{ runner.os }}-v${{ env.TAURI_CLI_VERSION }}
+          key: tauri-cli-bin-${{ runner.os }}-${{ env.TAURI_CLI_VERSION }}
 
       - name: Install Tauri CLI
         if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
@@ -168,10 +166,32 @@ jobs:
             cargo tauri android init
           fi
 
+      # فك تشفير الـ keystore من السيكرت وحفظه كملف مؤقت للتوقيع.
+      # لو السيكرتات دي مش موجودة، الخطوة هتفشل بوضوح بدل ما تبني APK غير موقّع بصمت.
+      - name: Decode Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > naqrah-release.keystore
+
+      # ملف الإعدادات اللي Tauri Android بيدور عليه أثناء البناء عشان يوقّع الـ APK تلقائيًا
+      - name: Create Signing Properties
+        run: |
+          cat > gen/android/keystore.properties <<EOF
+          password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=${{ github.workspace }}/naqrah-release.keystore
+          EOF
+
       - name: Build APK
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: cargo tauri android build --apk
+
+      # تنظيف الملفات الحساسة فورًا بعد البناء
+      - name: Cleanup Keystore
+        if: always()
+        run: rm -f naqrah-release.keystore gen/android/keystore.properties
 
       - name: Find and Copy APK
         run: |

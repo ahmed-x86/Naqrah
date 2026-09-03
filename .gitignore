@@ -15,3 +15,5 @@ target
 gen
 auto_commit.shnaqrah
 naqrah
+naqrah-release.keystore
+keystore_base64.txt

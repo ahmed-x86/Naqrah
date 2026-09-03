@@ -180,41 +180,9 @@ jobs:
           name: Naqrah-Linux-rpm
           path: Naqrah-Linux.rpm
 
-      # بناء حزمة .pkg.tar.zst (Arch Linux)
-      - name: Build .pkg.tar.zst Package
-        if: runner.os == 'Linux'
-        run: |
-          PKG_ROOT="arch-build/pkg/naqrah"
-          mkdir -p "${PKG_ROOT}/usr/bin"
-          mkdir -p "${PKG_ROOT}/usr/share/applications"
-          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
-
-          cp target/release/naqrah "${PKG_ROOT}/usr/bin/"
-          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
-          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
-
-          # إنشاء .PKGINFO (الملف الأساسي لحزم Arch)
-          cat > "${PKG_ROOT}/.PKGINFO" <<EOF
-          pkgname = naqrah
-          pkgver = 1.0.0-1
-          pkgdesc = Arabic text diacritics (Tashkeel) editor
-          url = https://github.com/ahmed-x86/Naqrah
-          arch = x86_64
-          license = GPL
-          EOF
-          sed -i 's/^          //' "${PKG_ROOT}/.PKGINFO"
-
-          # بناء الحزمة: .PKGINFO أولاً ثم باقي الملفات
-          cd "${PKG_ROOT}"
-          tar --zstd -cf ../../../Naqrah-Linux.pkg.tar.zst .PKGINFO usr/
-          cd ../../../
-
-      - name: Upload .pkg.tar.zst Artifact
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Naqrah-Linux-pkg
-          path: Naqrah-Linux.pkg.tar.zst
+      # ملاحظة: باكدج Arch (.pkg.tar.zst) عاد بقى ليه job منفصل (build-arch) بيستخدم
+      # PKGBUILD + makepkg -s فعليًا بدل التلفيق اليدوي بـ .PKGINFO + tar اللي كان هنا.
+      # نفس الكلام لـ Void Linux (.xbps) في job (build-void).
 
       # ===== تغليف ويندوز =====
       - name: Package Windows
@@ -232,6 +200,136 @@ jobs:
         with:
           name: Naqrah-Windows
           path: Naqrah-Windows.zip
+
+  # ===== بناء حزمة Arch Linux باستخدام PKGBUILD + makepkg -s (مش .PKGINFO يدوي) =====
+  # بيشتغل جوه container أرش نفسه عشان الباينري يتبني ويتربط بنسخة glibc/الاعتماديات
+  # المتوفرة فعليًا على أرش، بدل ما نعتمد على باينري اتبنى على ubuntu-latest.
+  build-arch:
+    name: Build Arch Package (PKGBUILD)
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          pacman -Syu --noconfirm --needed rust webkit2gtk-4.1 libappindicator-gtk3 librsvg patchelf upx git sudo
+
+      # makepkg بيرفض يشتغل بمستخدم root، فلازم نعمل مستخدم عادي ونديله صلاحية
+      # الكتابة على مجلد المشروع كامل قبل ما نستخدمه في أي خطوة لاحقة.
+      - name: Create Non-root Build User
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Install Tauri CLI
+        run: su builder -c "cargo install tauri-cli --version \"^${{ env.TAURI_CLI_VERSION }}\" --locked"
+
+      # بنبني الباينري بس من غير باندلات Tauri الافتراضية، لأن التغليف هيتعمل بـ PKGBUILD
+      - name: Build Tauri Binary
+        run: su builder -c 'export PATH="$HOME/.cargo/bin:$PATH" && cargo tauri build --no-bundle'
+
+      - name: Compress Binary
+        run: upx --best --lzma target/release/naqrah || true
+
+      # ملفات الـ source اللي هيشير لها PKGBUILD لازم تكون جنب بعض في نفس المجلد
+      # عشان makepkg يعرف ينسخهم لـ src/ تلقائيًا (source محلي بدون رابط تحميل)
+      - name: Prepare PKGBUILD Sources
+        run: |
+          mkdir -p arch-pkg
+          cp target/release/naqrah arch-pkg/naqrah
+          cp naqrah.desktop arch-pkg/naqrah.desktop
+          cp iconn.png arch-pkg/naqrah.png
+
+          cat > arch-pkg/PKGBUILD <<'EOF'
+          pkgname=naqrah
+          pkgver=1.0.0
+          pkgrel=1
+          pkgdesc="Arabic text diacritics (Tashkeel) editor - محرر تشكيل النصوص العربية"
+          arch=('x86_64')
+          url="https://github.com/ahmed-x86/Naqrah"
+          license=('GPL')
+          depends=('webkit2gtk-4.1' 'gtk3')
+          source=("naqrah" "naqrah.desktop" "naqrah.png")
+          sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+          package() {
+              install -Dm755 "${srcdir}/naqrah" "${pkgdir}/usr/bin/naqrah"
+              install -Dm644 "${srcdir}/naqrah.desktop" "${pkgdir}/usr/share/applications/naqrah.desktop"
+              install -Dm644 "${srcdir}/naqrah.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+          }
+          EOF
+          sed -i 's/^          //' arch-pkg/PKGBUILD
+
+      - name: Build Package with makepkg -s
+        run: |
+          chown -R builder:builder arch-pkg
+          cd arch-pkg
+          su builder -c "makepkg -s --noconfirm"
+          mv naqrah-1.0.0-1-x86_64.pkg.tar.zst ../Naqrah-Linux.pkg.tar.zst
+
+      - name: Upload Arch Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-pkg
+          path: Naqrah-Linux.pkg.tar.zst
+
+  # ===== بناء حزمة Void Linux (glibc) بصيغة .xbps =====
+  # xbps-create هي الأداة الرسمية لتغليف باينري جاهز كحزمة xbps من غير الحاجة
+  # لكامل نظام xbps-src/templates (زيها زي checkinstall بس رسمية من Void).
+  build-void:
+    name: Build Void Linux Package (.xbps)
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/void-linux/void-glibc-full:latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          xbps-install -Sy xbps || true
+          xbps-install -Suy || true
+          xbps-install -y base-devel rust cargo webkitgtk libappindicator gtk+3 upx git
+
+      - name: Build Tauri Binary
+        run: cargo tauri build --no-bundle || (cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked && cargo tauri build --no-bundle)
+
+      - name: Compress Binary
+        run: upx --best --lzma target/release/naqrah || true
+
+      # تجهيز شجرة الملفات زي ما هتتنصب فعليًا على جهاز المستخدم
+      - name: Prepare Package Root
+        run: |
+          PKG_ROOT="void-pkg-root"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/share/applications"
+          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
+
+          cp target/release/naqrah "${PKG_ROOT}/usr/bin/"
+          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
+          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+
+      - name: Build .xbps Package with xbps-create
+        run: |
+          xbps-create \
+            -A x86_64 \
+            -n naqrah-1.0.0_1 \
+            -s "Arabic text diacritics (Tashkeel) editor" \
+            --license GPL \
+            --homepage "https://github.com/ahmed-x86/Naqrah" \
+            --maintainer "ahmed-x86" \
+            -o Naqrah-Void.xbps \
+            void-pkg-root
+
+      - name: Upload Void Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Void-xbps
+          path: Naqrah-Void.xbps
 
   # ملاحظة: الـ job ده بيشتغل على ubuntu-latest برضو، لكن ده مش تكرار لبناء Linux desktop.
   # ubuntu هنا مجرد "runner" (بيئة تشغيل) لبناء APK الأندرويد عن طريق NDK + Tauri Android.
@@ -301,6 +399,13 @@ jobs:
           if [ ! -d "gen/android" ]; then
             cargo tauri android init
           fi
+
+      # نولّد أيقونات كل المنصات (بما فيها أندرويد) من نفس ملف iconn.png
+      # عشان أيقونة الـ APK تطابق أيقونة سطح المكتب. لازم تتنفذ بعد تهيئة
+      # مجلد gen/android (سواء جديد أو مسترجع من الكاش) عشان تلاقي المسار
+      # الصحيح وتحدّث الـ mipmap resources بتاعته.
+      - name: Regenerate Icons (sync with iconn.png)
+        run: cargo tauri icon iconn.png
 
       # فك تشفير الـ keystore من السيكرت وحفظه كملف مؤقت للتوقيع
       - name: Decode Keystore
@@ -474,6 +579,13 @@ jobs:
             cargo tauri android init
           fi
 
+      # نولّد أيقونات كل المنصات (بما فيها أندرويد) من نفس ملف iconn.png
+      # عشان أيقونة الـ APK تطابق أيقونة سطح المكتب. لازم تتنفذ بعد تهيئة
+      # مجلد gen/android (سواء جديد أو مسترجع من الكاش) عشان تلاقي المسار
+      # الصحيح وتحدّث الـ mipmap resources بتاعته.
+      - name: Regenerate Icons (sync with iconn.png)
+        run: cargo tauri icon iconn.png
+
       # فك تشفير الـ keystore من السيكرت وحفظه كملف مؤقت للتوقيع
       - name: Decode Keystore
         env:
@@ -567,7 +679,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-desktop, build-android-universal, build-android]
+    needs: [build-desktop, build-arch, build-void, build-android-universal, build-android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -608,6 +720,8 @@ jobs:
                   echo "| 🐧 **Linux (Fedora/RHEL)** | x86_64 — .rpm | ${size} | [تحميل](${url}) |" ;;
                 *Linux*.pkg.tar.zst)
                   echo "| 🐧 **Linux (Arch)** | x86_64 — .pkg.tar.zst | ${size} | [تحميل](${url}) |" ;;
+                *Void*.xbps)
+                  echo "| 🐧 **Linux (Void)** | x86_64 glibc — .xbps | ${size} | [تحميل](${url}) |" ;;
                 naqrah)
                   echo "| 🐧 **Linux (ELF)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
                 Naqrah-Android.apk)
@@ -626,7 +740,7 @@ jobs:
             done
 
             echo ""
-            echo "> 🐧 **مستخدم لينكس؟** حمّل حزمة توزيعتك (.deb لـ Debian/Ubuntu، .rpm لـ Fedora، .pkg.tar.zst لـ Arch) أو الملف التنفيذي المباشر (ELF)."
+            echo "> 🐧 **مستخدم لينكس؟** حمّل حزمة توزيعتك (.deb لـ Debian/Ubuntu، .rpm لـ Fedora، .pkg.tar.zst لـ Arch، .xbps لـ Void) أو الملف التنفيذي المباشر (ELF)."
             echo ""
             echo "> 💡 **مش عارف تختار؟** جرّب نسخة **arm64-v8a** لو موبايلك حديث (2018 فما فوق)، أو حمّل النسخة **العامة (Universal)** لو مش عارف معماريتك وعايز خيار آمن يشتغل على أي جهاز."
             echo ""

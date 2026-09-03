@@ -10,7 +10,7 @@
     --secondary: #27272a;
     --secondary-hover: #3f3f46;
     --ring: #d4d4d8;
-    --highlight: #ef4444;
+    --highlight: #facc15;
 }
 
 * {
@@ -73,7 +73,7 @@ body {
 
 .dashboard-grid {
     display: grid;
-    /* الافتراضي للشاشات الصغيرة: عمود واحد (شبه صورة 2) */
+    /* الافتراضي للشاشات الصغيرة: عمود واحد */
     grid-template-columns: 1fr; 
     gap: 20px;
     min-height: 100%;
@@ -160,7 +160,7 @@ body {
     /* تحسين مساحة الضغط للمس (Touch targets) */
     padding: 12px 16px; 
     cursor: pointer;
-    transition: background-color 0.2s, color 0.2s;
+    transition: background-color 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
     border: none;
     font-family: inherit;
 }
@@ -202,13 +202,20 @@ body {
     letter-spacing: -0.02em;
 }
 
+/* تمييز الحرف النشط */
 .highlight-char {
     color: var(--highlight);
+    background-color: rgba(250, 204, 21, 0.12);
+    padding: 0 6px;
+    border-radius: 6px;
     text-decoration: underline;
-    text-underline-offset: 10px;
+    text-underline-offset: 8px;
     text-decoration-thickness: 3px;
+    text-decoration-color: var(--highlight);
+    box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
 }
 
+/* شبكة أزرار الحركات */
 .marks-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -217,9 +224,89 @@ body {
 }
 
 .btnMark {
-    padding: 14px 12px; /* تكبير بسيط للزر لتسهيل الضغط باللمس */
+    position: relative;
+    padding: 14px 12px;
     font-size: 0.95rem;
     font-weight: 600;
+    transition: all 0.2s ease-in-out;
+}
+
+/* 1. الفتحة وتنوين الفتح (أخضر زمردي) */
+.btnMark[data-mark="َ"],
+.btnMark[data-mark="ً"] {
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.35);
+    background-color: rgba(74, 222, 128, 0.05);
+}
+.btnMark[data-mark="َ"]:hover,
+.btnMark[data-mark="ً"]:hover {
+    border-color: #4ade80;
+    background-color: rgba(74, 222, 128, 0.15);
+    box-shadow: 0 0 12px rgba(74, 222, 128, 0.2);
+}
+
+/* 2. الضمة وتنوين الضم (أزرق سماوي) */
+.btnMark[data-mark="ُ"],
+.btnMark[data-mark="ٌ"] {
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.35);
+    background-color: rgba(56, 189, 248, 0.05);
+}
+.btnMark[data-mark="ُ"]:hover,
+.btnMark[data-mark="ٌ"]:hover {
+    border-color: #38bdf8;
+    background-color: rgba(56, 189, 248, 0.15);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+}
+
+/* 3. الكسرة وتنوين الكسر (برتقالي دافئ) */
+.btnMark[data-mark="ِ"],
+.btnMark[data-mark="ٍ"] {
+    color: #fb923c;
+    border-color: rgba(251, 146, 60, 0.35);
+    background-color: rgba(251, 146, 60, 0.05);
+}
+.btnMark[data-mark="ِ"]:hover,
+.btnMark[data-mark="ٍ"]:hover {
+    border-color: #fb923c;
+    background-color: rgba(251, 146, 60, 0.15);
+    box-shadow: 0 0 12px rgba(251, 146, 60, 0.2);
+}
+
+/* 4. السكون (بنفسجي لافندر) */
+.btnMark[data-mark="ْ"] {
+    color: #c084fc;
+    border-color: rgba(192, 132, 252, 0.35);
+    background-color: rgba(192, 132, 252, 0.05);
+}
+.btnMark[data-mark="ْ"]:hover {
+    border-color: #c084fc;
+    background-color: rgba(192, 132, 252, 0.15);
+    box-shadow: 0 0 12px rgba(192, 132, 252, 0.2);
+}
+
+/* 5. الشدة (وردي قرمزي) */
+.btnMark[data-mark="ّ"] {
+    color: #fb7185;
+    border-color: rgba(251, 113, 133, 0.35);
+    background-color: rgba(251, 113, 133, 0.05);
+}
+.btnMark[data-mark="ّ"]:hover {
+    border-color: #fb7185;
+    background-color: rgba(251, 113, 133, 0.15);
+    box-shadow: 0 0 12px rgba(251, 113, 133, 0.2);
+}
+
+/* تحسين زر الانتقال داخل لوحة التشكيل */
+#btnNextChar {
+    background-color: #1e1e24;
+    border: 1px solid #3f3f46;
+    color: #f4f4f5;
+    font-weight: 600;
+}
+#btnNextChar:hover {
+    background-color: #27272a;
+    border-color: #52525b;
 }
 
 /* --- التصميم المتجاوب للشاشات العريضة (الكمبيوتر) --- */
@@ -228,7 +315,6 @@ body {
         padding: 24px;
     }
     .dashboard-grid {
-        /* العودة لـ 3 أعمدة عندما تكون الشاشة واسعة */
         grid-template-columns: repeat(3, minmax(0, 1fr)); 
         height: 100%;
     }

@@ -50,6 +50,8 @@ jobs:
         with:
           shared-key: ${{ matrix.os }}-desktop
 
+      # كاش binary أداة tauri-cli نفسها. المفتاح هنا لازم يتطابق بالظبط بين
+      # خطوة "Cache" وخطوة "Install" عشان cache-hit يشتغل صح.
       - name: Cache Tauri CLI binary
         id: cache-tauri-cli
         uses: actions/cache@v4
@@ -100,20 +102,30 @@ jobs:
             *.zip
             *.tar.gz
 
+  # ملاحظة: الـ job ده بيشتغل على ubuntu-latest برضو، لكن ده مش تكرار لبناء Linux desktop.
+  # ubuntu هنا مجرد "runner" (بيئة تشغيل) لبناء APK الأندرويد عن طريق NDK + Tauri Android.
+  # الناتج هنا (.apk) مختلف تمامًا عن ناتج build-desktop (.tar.gz / .zip).
+  # كل معمارية ليها VM منفصلة وبتبني APK خاص بيها بس (مش universal).
+  # ده بيدي 4 ملفات APK صغيرة ومتوقعة زي الأصلية، كل واحد لمعماريته.
   build-android:
-    name: Build Android APK (${{ matrix.abi }})
+    name: Build Android APK (${{ matrix.arch }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          # معمارية هاتفك (الحديثة)
-          - target: aarch64-linux-android
-            abi: arm64-v8a
-          # معمارية أندرويد 6 والأجهزة القديمة لصديقك
-          - target: armv7-linux-androideabi
-            abi: armeabi-v7a
-
+          - arch: arm64-v8a
+            rust_target: aarch64-linux-android
+            tauri_target: aarch64
+          - arch: armeabi-v7a          # أندرويد 6 (API 23) فما فوق
+            rust_target: armv7-linux-androideabi
+            tauri_target: armv7
+          - arch: x86
+            rust_target: i686-linux-android
+            tauri_target: i686
+          - arch: x86_64
+            rust_target: x86_64-linux-android
+            tauri_target: x86_64
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -127,39 +139,45 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # NDK ضروري جداً لبناء أكواد Rust للأندرويد
       - name: Setup Android NDK
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
           ndk-version: r26d
 
+      # نجيب Rust target بتاع المعمارية دي بس (مش الأربعة) عشان يبقى أسرع
       - name: Setup Rust for Android
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: ${{ matrix.rust_target }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: android-${{ matrix.abi }}
+          shared-key: android-${{ matrix.arch }}
 
       - name: Cache Tauri CLI binary
         id: cache-tauri-cli
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-tauri
-          key: tauri-cli-bin-${{ runner.os }}-${{ env.TAURI_CLI_VERSION }}
+          key: tauri-cli-bin-${{ runner.os }}-${{ matrix.arch }}-${{ env.TAURI_CLI_VERSION }}
 
       - name: Install Tauri CLI
         if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
         run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
 
+      # كاش مجلد gen/android لتفادي إعادة تهيئة مشروع الأندرويد بالكامل كل مرة
+      # v2: cache key متغير عشان نتخلص من أي نسخة مكسورة محفوظة سابقاً
+      # كل معمارية ليها كاش منفصل عشان الـ 4 VMs بيشتغلوا في نفس الوقت
       - name: Cache Android project
         uses: actions/cache@v4
         with:
           path: gen/android
-          key: android-gen-v2-${{ hashFiles('tauri.conf.json') }}-${{ matrix.abi }}
+          key: android-gen-v2-${{ matrix.arch }}-${{ hashFiles('tauri.conf.json') }}
 
+      # تعديل الباكدج نيم وبناء مجلد أندرويد برمجياً
       - name: Set Package Name & Init Android
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
@@ -169,12 +187,14 @@ jobs:
             cargo tauri android init
           fi
 
+      # فك تشفير الـ keystore من السيكرت وحفظه كملف مؤقت للتوقيع
       - name: Decode Keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > naqrah-release.keystore
 
+      # ملف الإعدادات اللي Gradle هيقرأه (بعد ما نربطه بـ build.gradle.kts في الخطوة الجاية)
       - name: Create Signing Properties
         run: |
           cat > gen/android/keystore.properties <<EOF
@@ -183,19 +203,27 @@ jobs:
           storeFile=${{ github.workspace }}/naqrah-release.keystore
           EOF
 
+      # الخطوة الحاسمة: Tauri Android CLI مبيربطش keystore.properties بالـ signing تلقائيًا.
+      # لازم نضيف signingConfigs في build.gradle.kts يدويًا ونربطها بـ buildTypes.release،
+      # وإلا الـ APK هيتبني "unsigned" حتى لو keystore.properties موجود وصحيح.
+      #
+      # الحل: بدل sed اللي ممكن يكرر الـ imports، نقرأ الملف الأصلي ونكتبه من الصفر بشكل آمن.
       - name: Inject Signing Config into Gradle
         run: |
           GRADLE_FILE="gen/android/app/build.gradle.kts"
 
           if ! grep -q "keystore.properties" "$GRADLE_FILE"; then
+            # إضافة import java.io.FileInputStream لو مش موجود (java.util.Properties موجود أصلاً من Tauri)
             if ! grep -q "import java.io.FileInputStream" "$GRADLE_FILE"; then
               sed -i '1i import java.io.FileInputStream' "$GRADLE_FILE"
             fi
 
+            # إضافة import java.util.Properties بس لو مش موجود أصلاً
             if ! grep -q "import java.util.Properties" "$GRADLE_FILE"; then
               sed -i '1i import java.util.Properties' "$GRADLE_FILE"
             fi
 
+            # إضافة تحميل keystoreProperties قبل بلوك android {
             sed -i '/^android {/i \
           val keystorePropertiesFile = rootProject.file("keystore.properties")\
           val keystoreProperties = Properties()\
@@ -204,6 +232,7 @@ jobs:
           }\
           ' "$GRADLE_FILE"
 
+            # إضافة signingConfigs جوه بلوك android { بعد أول سطر مباشرة
             sed -i '/^android {/a \
               signingConfigs {\
                   create("release") {\
@@ -215,27 +244,30 @@ jobs:
               }\
           ' "$GRADLE_FILE"
 
+            # ربط signingConfig بـ buildTypes.release
             sed -i '/getByName("release")/a \
                   signingConfig = signingConfigs.getByName("release")' "$GRADLE_FILE"
           fi
+
           cat "$GRADLE_FILE"
 
-      # استخدام متغير المعمارية לבناء النسخة المحددة فقط
+      # --target هنا بيخلي Tauri يبني معمارية واحدة بس (بتاعة الـ matrix الحالية)
       - name: Build APK
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: cargo tauri android build --apk --target ${{ matrix.target }}
+        run: cargo tauri android build --apk --target ${{ matrix.tauri_target }}
 
+      # تنظيف الملفات الحساسة فورًا بعد البناء
       - name: Cleanup Keystore
         if: always()
         run: rm -f naqrah-release.keystore gen/android/keystore.properties
 
-      # سحب الـ APK الموقّع وتسميته بناءً على المعمارية
+      # اسم الملف بيتحط فيه اسم المعمارية عشان يبقى واضح للمستخدم وهو بيحمّل
       - name: Find and Copy APK
         run: |
-          find gen/android/app/build/outputs/apk -name "*release*.apk" ! -name "*unsigned*" -exec cp {} Naqrah-Android-${{ matrix.abi }}.apk \;
-          if [ ! -f Naqrah-Android-${{ matrix.abi }}.apk ]; then
-            echo "::error::لم يتم إيجاد APK موقّع لمعمارية ${{ matrix.abi }}! تأكد من صحة الـ signing config."
+          find gen/android/app/build/outputs/apk -name "*release*.apk" ! -name "*unsigned*" -exec cp {} Naqrah-Android-${{ matrix.arch }}.apk \;
+          if [ ! -f "Naqrah-Android-${{ matrix.arch }}.apk" ]; then
+            echo "::error::لم يتم إيجاد APK موقّع لمعمارية ${{ matrix.arch }}! تأكد من صحة الـ signing config."
             find gen/android/app/build/outputs/apk -name "*.apk"
             exit 1
           fi
@@ -243,8 +275,8 @@ jobs:
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Naqrah-Android-${{ matrix.abi }}
-          path: Naqrah-Android-${{ matrix.abi }}.apk
+          name: Naqrah-Android-${{ matrix.arch }}
+          path: Naqrah-Android-${{ matrix.arch }}.apk
 
   release:
     name: Create GitHub Release
@@ -258,10 +290,59 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      # بيبني جدول تحميل زي البرامج الكبيرة، فيه المنصة والمعمارية والحجم ورابط
+      # مباشر لكل ملف، ويتحط كـ body للـ Release
+      - name: Generate Download Table
+        id: notes
+        run: |
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
+
+          {
+            echo "## 📦 Naqrah ${TAG}"
+            echo ""
+            echo "اختر النسخة المناسبة لجهازك من الجدول تحت وحمّلها مباشرة 👇"
+            echo ""
+            echo "| 💻 المنصة | 🏗️ المعمارية | 📁 الحجم | ⬇️ التحميل |"
+            echo "|:---|:---|:---:|:---:|"
+
+            for f in artifacts/*; do
+              name=$(basename "$f")
+              size=$(du -h "$f" | cut -f1 | sed 's/[[:space:]]*//g')
+              url="${BASE_URL}/${name}"
+
+              case "$name" in
+                *Windows*)
+                  echo "| 🪟 **Windows** | x86_64 | ${size} | [تحميل](${url}) |" ;;
+                *Linux*)
+                  echo "| 🐧 **Linux** | x86_64 | ${size} | [تحميل](${url}) |" ;;
+                *arm64-v8a*)
+                  echo "| 🤖 **Android** | ARM64 (v8a) — الأجهزة الحديثة | ${size} | [تحميل](${url}) |" ;;
+                *armeabi-v7a*)
+                  echo "| 🤖 **Android** | ARMv7 (v7a) — أندرويد 6 فما فوق | ${size} | [تحميل](${url}) |" ;;
+                *x86_64*)
+                  echo "| 🤖 **Android** | x86_64 — أجهزة المحاكاة/الإنتل | ${size} | [تحميل](${url}) |" ;;
+                *x86*)
+                  echo "| 🤖 **Android** | x86 — أجهزة المحاكاة/الإنتل | ${size} | [تحميل](${url}) |" ;;
+                *)
+                  echo "| 📦 **أخرى** | - | ${size} | [تحميل](${url}) |" ;;
+              esac
+            done
+
+            echo ""
+            echo "> 💡 **مش عارف تختار؟** أغلب موبايلات الأندرويد الحديثة (2018 فما فوق) تستخدم **arm64-v8a**."
+            echo ""
+            echo "---"
+          } > RELEASE_NOTES.md
+
+          cat RELEASE_NOTES.md
+
       - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
+          body_path: RELEASE_NOTES.md
           draft: false
           prerelease: false
           generate_release_notes: true

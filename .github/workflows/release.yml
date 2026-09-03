@@ -29,12 +29,12 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. إعداد بيئة لينكس (Tauri dependencies + UPX)
+      # 1. إعداد بيئة لينكس (Tauri dependencies + UPX + أدوات التغليف)
       - name: Install System Dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf upx-ucl
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf upx-ucl rpm
 
       # 2. إعداد بيئة ويندوز (UPX)
       - name: Install UPX (Windows)
@@ -78,33 +78,322 @@ jobs:
         if: runner.os == 'Windows'
         run: upx --best --lzma target/release/naqrah.exe || true
 
-      # 5. التغليف والتجهيز للرفع
-      - name: Package Linux
+      # ===== تغليف لينكس: ELF مباشر + .deb + .rpm + .pkg.tar.zst =====
+
+      # رفع ملف ELF مباشرة بدون أي ضغط
+      - name: Upload Linux ELF Binary
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF
+          path: target/release/naqrah
+
+      # بناء حزمة .deb (Debian / Ubuntu)
+      - name: Build .deb Package
         if: runner.os == 'Linux'
         run: |
-          mkdir Naqrah-Linux
-          cp target/release/naqrah Naqrah-Linux/
-          tar -czvf Naqrah-Linux.tar.gz Naqrah-Linux
+          PKG_ROOT="deb-build/naqrah_1.0.0_amd64"
+          mkdir -p "${PKG_ROOT}/DEBIAN"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/share/applications"
+          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
 
+          cp target/release/naqrah "${PKG_ROOT}/usr/bin/"
+          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
+          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+
+          cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
+          Package: naqrah
+          Version: 1.0.0
+          Architecture: amd64
+          Maintainer: ahmed-x86
+          Description: Naqrah - Arabic text diacritics (Tashkeel) editor
+           محرر تشكيل النصوص العربية بواجهة رسومية حديثة
+          Section: utils
+          Priority: optional
+          EOF
+
+          # إزالة المسافات البادئة من ملف control (heredoc بيضيف مسافات)
+          sed -i 's/^          //' "${PKG_ROOT}/DEBIAN/control"
+
+          dpkg-deb --build --root-owner-group "${PKG_ROOT}"
+          mv deb-build/*.deb Naqrah-Linux.deb
+
+      - name: Upload .deb Artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-deb
+          path: Naqrah-Linux.deb
+
+      # بناء حزمة .rpm (Fedora / RHEL / openSUSE)
+      - name: Build .rpm Package
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+
+          # تجهيز الملفات المصدرية
+          mkdir -p rpmbuild/SOURCES/naqrah-1.0.0
+          cp target/release/naqrah rpmbuild/SOURCES/naqrah-1.0.0/
+          cp naqrah.desktop rpmbuild/SOURCES/naqrah-1.0.0/
+          cp iconn.png rpmbuild/SOURCES/naqrah-1.0.0/naqrah.png
+          tar -czf rpmbuild/SOURCES/naqrah-1.0.0.tar.gz -C rpmbuild/SOURCES naqrah-1.0.0
+
+          cat > rpmbuild/SPECS/naqrah.spec <<'SPEC'
+          Name:           naqrah
+          Version:        1.0.0
+          Release:        1%{?dist}
+          Summary:        Arabic text diacritics (Tashkeel) editor
+          License:        GPL
+          Source0:        naqrah-1.0.0.tar.gz
+
+          %description
+          Naqrah - محرر تشكيل النصوص العربية بواجهة رسومية حديثة
+
+          %prep
+          %setup -q
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+          cp naqrah %{buildroot}/usr/bin/
+          cp naqrah.desktop %{buildroot}/usr/share/applications/
+          cp naqrah.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/
+
+          %files
+          /usr/bin/naqrah
+          /usr/share/applications/naqrah.desktop
+          /usr/share/icons/hicolor/256x256/apps/naqrah.png
+          SPEC
+
+          # إزالة المسافات البادئة
+          sed -i 's/^          //' rpmbuild/SPECS/naqrah.spec
+
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/naqrah.spec
+          find rpmbuild/RPMS -name "*.rpm" -exec cp {} Naqrah-Linux.rpm \;
+
+      - name: Upload .rpm Artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-rpm
+          path: Naqrah-Linux.rpm
+
+      # بناء حزمة .pkg.tar.zst (Arch Linux)
+      - name: Build .pkg.tar.zst Package
+        if: runner.os == 'Linux'
+        run: |
+          PKG_ROOT="arch-build/pkg/naqrah"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/share/applications"
+          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
+
+          cp target/release/naqrah "${PKG_ROOT}/usr/bin/"
+          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
+          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+
+          # إنشاء .PKGINFO (الملف الأساسي لحزم Arch)
+          cat > "${PKG_ROOT}/.PKGINFO" <<EOF
+          pkgname = naqrah
+          pkgver = 1.0.0-1
+          pkgdesc = Arabic text diacritics (Tashkeel) editor
+          url = https://github.com/ahmed-x86/Naqrah
+          arch = x86_64
+          license = GPL
+          EOF
+          sed -i 's/^          //' "${PKG_ROOT}/.PKGINFO"
+
+          # إنشاء .MTREE (قائمة الملفات)
+          cd "${PKG_ROOT}"
+          find . -type f | sed 's|^\./||' > .MTREE_list
+          # بناء الحزمة: .PKGINFO أولاً ثم باقي الملفات
+          bsdtar -czf ../../../Naqrah-Linux.pkg.tar.zst --zstd .PKGINFO $(find . -path ./.PKGINFO -prune -o -type f -print | sed 's|^\./||')
+          cd ../../../
+
+      - name: Upload .pkg.tar.zst Artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-pkg
+          path: Naqrah-Linux.pkg.tar.zst
+
+      # ===== تغليف ويندوز =====
       - name: Package Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path Naqrah-Windows
           Copy-Item target\release\naqrah.exe -Destination Naqrah-Windows\
+          Copy-Item icon.ico -Destination Naqrah-Windows\
           Compress-Archive -Path Naqrah-Windows -DestinationPath Naqrah-Windows.zip
 
-      - name: Upload Artifact
+      - name: Upload Windows Artifact
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: |
-            *.zip
-            *.tar.gz
+          name: Naqrah-Windows
+          path: Naqrah-Windows.zip
 
   # ملاحظة: الـ job ده بيشتغل على ubuntu-latest برضو، لكن ده مش تكرار لبناء Linux desktop.
   # ubuntu هنا مجرد "runner" (بيئة تشغيل) لبناء APK الأندرويد عن طريق NDK + Tauri Android.
   # الناتج هنا (.apk) مختلف تمامًا عن ناتج build-desktop (.tar.gz / .zip).
+  #
+  # ده الـ APK "العام/الشامل" (Universal) — بيحتوي على كل المعماريات جوه ملف واحد
+  # فبيشتغل على أي جهاز أندرويد بدون ما المستخدم يحتاج يعرف معماريته.
+  # حجمه أكبر من نسخ المعماريات المنفصلة، لكنه أسهل وأضمن لمعظم الناس.
+  build-android-universal:
+    name: Build Android APK (Universal)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # NDK ضروري جداً لبناء أكواد Rust للأندرويد
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+
+      - name: Setup Rust for Android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: android-universal
+
+      - name: Cache Tauri CLI binary
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-bin-${{ runner.os }}-universal-${{ env.TAURI_CLI_VERSION }}
+
+      - name: Install Tauri CLI
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
+
+      # كاش مجلد gen/android لتفادي إعادة تهيئة مشروع الأندرويد بالكامل كل مرة
+      # v2: cache key متغير عشان نتخلص من أي نسخة مكسورة محفوظة سابقاً
+      - name: Cache Android project
+        uses: actions/cache@v4
+        with:
+          path: gen/android
+          key: android-gen-v2-universal-${{ hashFiles('tauri.conf.json') }}
+
+      # تعديل الباكدج نيم وبناء مجلد أندرويد برمجياً
+      - name: Set Package Name & Init Android
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          sed -i 's/"com.naqrah.dev"/"com.ahmed-x86.nagrah"/g' tauri.conf.json
+          if [ ! -d "gen/android" ]; then
+            cargo tauri android init
+          fi
+
+      # فك تشفير الـ keystore من السيكرت وحفظه كملف مؤقت للتوقيع
+      - name: Decode Keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > naqrah-release.keystore
+
+      # ملف الإعدادات اللي Gradle هيقرأه (بعد ما نربطه بـ build.gradle.kts في الخطوة الجاية)
+      - name: Create Signing Properties
+        run: |
+          cat > gen/android/keystore.properties <<EOF
+          password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=${{ github.workspace }}/naqrah-release.keystore
+          EOF
+
+      # الخطوة الحاسمة: Tauri Android CLI مبيربطش keystore.properties بالـ signing تلقائيًا.
+      # لازم نضيف signingConfigs في build.gradle.kts يدويًا ونربطها بـ buildTypes.release،
+      # وإلا الـ APK هيتبني "unsigned" حتى لو keystore.properties موجود وصحيح.
+      #
+      # الحل: بدل sed اللي ممكن يكرر الـ imports، نقرأ الملف الأصلي ونكتبه من الصفر بشكل آمن.
+      - name: Inject Signing Config into Gradle
+        run: |
+          GRADLE_FILE="gen/android/app/build.gradle.kts"
+
+          if ! grep -q "keystore.properties" "$GRADLE_FILE"; then
+            # إضافة import java.io.FileInputStream لو مش موجود (java.util.Properties موجود أصلاً من Tauri)
+            if ! grep -q "import java.io.FileInputStream" "$GRADLE_FILE"; then
+              sed -i '1i import java.io.FileInputStream' "$GRADLE_FILE"
+            fi
+
+            # إضافة import java.util.Properties بس لو مش موجود أصلاً
+            if ! grep -q "import java.util.Properties" "$GRADLE_FILE"; then
+              sed -i '1i import java.util.Properties' "$GRADLE_FILE"
+            fi
+
+            # إضافة تحميل keystoreProperties قبل بلوك android {
+            sed -i '/^android {/i \
+          val keystorePropertiesFile = rootProject.file("keystore.properties")\
+          val keystoreProperties = Properties()\
+          if (keystorePropertiesFile.exists()) {\
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))\
+          }\
+          ' "$GRADLE_FILE"
+
+            # إضافة signingConfigs جوه بلوك android { بعد أول سطر مباشرة
+            sed -i '/^android {/a \
+              signingConfigs {\
+                  create("release") {\
+                      keyAlias = keystoreProperties["keyAlias"] as String\
+                      keyPassword = keystoreProperties["password"] as String\
+                      storeFile = file(keystoreProperties["storeFile"] as String)\
+                      storePassword = keystoreProperties["password"] as String\
+                  }\
+              }\
+          ' "$GRADLE_FILE"
+
+            # ربط signingConfig بـ buildTypes.release
+            sed -i '/getByName("release")/a \
+                  signingConfig = signingConfigs.getByName("release")' "$GRADLE_FILE"
+          fi
+
+          cat "$GRADLE_FILE"
+
+      # من غير --target: Tauri بيبني ملف APK واحد شامل كل المعماريات جواه
+      - name: Build APK
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: cargo tauri android build --apk
+
+      # تنظيف الملفات الحساسة فورًا بعد البناء
+      - name: Cleanup Keystore
+        if: always()
+        run: rm -f naqrah-release.keystore gen/android/keystore.properties
+
+      - name: Find and Copy APK
+        run: |
+          find gen/android/app/build/outputs/apk -name "*universal*release*.apk" ! -name "*unsigned*" -exec cp {} Naqrah-Android.apk \;
+          if [ ! -f Naqrah-Android.apk ]; then
+            echo "::error::لم يتم إيجاد APK عام موقّع! تأكد من صحة الـ signing config."
+            find gen/android/app/build/outputs/apk -name "*.apk"
+            exit 1
+          fi
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Android-universal
+          path: Naqrah-Android.apk
+
   # كل معمارية ليها VM منفصلة وبتبني APK خاص بيها بس (مش universal).
   # ده بيدي 4 ملفات APK صغيرة ومتوقعة زي الأصلية، كل واحد لمعماريته.
   build-android:
@@ -280,7 +569,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-desktop, build-android]
+    needs: [build-desktop, build-android-universal, build-android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -315,8 +604,16 @@ jobs:
               case "$name" in
                 *Windows*)
                   echo "| 🪟 **Windows** | x86_64 | ${size} | [تحميل](${url}) |" ;;
-                *Linux*)
-                  echo "| 🐧 **Linux** | x86_64 | ${size} | [تحميل](${url}) |" ;;
+                *Linux*.deb)
+                  echo "| 🐧 **Linux (Debian/Ubuntu)** | x86_64 — .deb | ${size} | [تحميل](${url}) |" ;;
+                *Linux*.rpm)
+                  echo "| 🐧 **Linux (Fedora/RHEL)** | x86_64 — .rpm | ${size} | [تحميل](${url}) |" ;;
+                *Linux*.pkg.tar.zst)
+                  echo "| 🐧 **Linux (Arch)** | x86_64 — .pkg.tar.zst | ${size} | [تحميل](${url}) |" ;;
+                naqrah)
+                  echo "| 🐧 **Linux (ELF)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
+                Naqrah-Android.apk)
+                  echo "| 🤖 **Android** | 🌐 عام — يشتغل على أي جهاز | ${size} | [تحميل](${url}) |" ;;
                 *arm64-v8a*)
                   echo "| 🤖 **Android** | ARM64 (v8a) — الأجهزة الحديثة | ${size} | [تحميل](${url}) |" ;;
                 *armeabi-v7a*)
@@ -331,7 +628,9 @@ jobs:
             done
 
             echo ""
-            echo "> 💡 **مش عارف تختار؟** أغلب موبايلات الأندرويد الحديثة (2018 فما فوق) تستخدم **arm64-v8a**."
+            echo "> 🐧 **مستخدم لينكس؟** حمّل حزمة توزيعتك (.deb لـ Debian/Ubuntu، .rpm لـ Fedora، .pkg.tar.zst لـ Arch) أو الملف التنفيذي المباشر (ELF)."
+            echo ""
+            echo "> 💡 **مش عارف تختار؟** جرّب نسخة **arm64-v8a** لو موبايلك حديث (2018 فما فوق)، أو حمّل النسخة **العامة (Universal)** لو مش عارف معماريتك وعايز خيار آمن يشتغل على أي جهاز."
             echo ""
             echo "---"
           } > RELEASE_NOTES.md

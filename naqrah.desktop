@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Naqrah
+Name[ar]=نقرة
+Comment=Arabic text diacritics (Tashkeel) editor
+Comment[ar]=محرر تشكيل النصوص العربية
+Exec=naqrah
+Icon=naqrah
+Terminal=false
+Type=Application
+Categories=Utility;TextEditor;
+Keywords=arabic;tashkeel;diacritics;تشكيل;عربي;نقرة;

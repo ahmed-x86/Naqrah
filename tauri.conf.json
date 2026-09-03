@@ -20,5 +20,20 @@
     "security": {
       "csp": null
     }
+  },
+  "bundle": {
+    "icon": [
+      "icon.ico",
+      "iconn.png"
+    ],
+    "category": "Utility",
+    "linux": {
+      "deb": {
+        "desktopTemplate": "naqrah.desktop"
+      },
+      "rpm": {
+        "desktopTemplate": "naqrah.desktop"
+      }
+    }
   }
 }

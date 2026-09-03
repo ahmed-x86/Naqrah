@@ -2,6 +2,8 @@ name: Build and Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -289,11 +291,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      # أسماء الحزم في Void مختلفة عن Arch/Debian:
+      # webkit2gtk-devel (مش webkitgtk) + libayatana-appindicator-devel (مش libappindicator)
+      # + gtk+3-devel (مش gtk+3 اللي هي الـ runtime بس من غير هيدرز)
       - name: Install System Dependencies
         run: |
-          xbps-install -Sy xbps || true
-          xbps-install -Suy || true
-          xbps-install -y base-devel rust cargo webkitgtk libappindicator gtk+3 upx git
+          xbps-install -Suy xbps
+          xbps-install -Suy
+          xbps-install -y base-devel rust cargo webkit2gtk-devel gtk+3-devel libayatana-appindicator-devel librsvg-devel patchelf upx git
 
       - name: Build Tauri Binary
         run: cargo tauri build --no-bundle || (cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked && cargo tauri build --no-bundle)

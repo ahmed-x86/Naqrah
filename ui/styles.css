@@ -26,7 +26,8 @@ body {
     height: 100vh;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    /* إبقاء overflow: hidden هنا لمنع ارتداد الصفحة بأكملها */
+    overflow: hidden; 
     -webkit-font-smoothing: antialiased;
 }
 
@@ -37,6 +38,8 @@ body {
     display: flex;
     align-items: center;
     padding: 0 24px;
+    /* للحفاظ على حجم الهيدر ثابت */
+    flex-shrink: 0; 
 }
 
 .header-right {
@@ -60,15 +63,20 @@ body {
 
 .app-main {
     flex: 1;
-    padding: 24px;
-    overflow: hidden;
+    padding: 16px;
+    /* تفعيل التمرير العمودي هنا بدلاً من hidden */
+    overflow-y: auto; 
+    overflow-x: hidden;
+    /* لجعل التمرير ناعماً على شاشات اللمس */
+    -webkit-overflow-scrolling: touch; 
 }
 
 .dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 24px;
-    height: 100%;
+    /* الافتراضي للشاشات الصغيرة: عمود واحد (شبه صورة 2) */
+    grid-template-columns: 1fr; 
+    gap: 20px;
+    min-height: 100%;
 }
 
 .card {
@@ -117,6 +125,8 @@ body {
 
 .textarea {
     width: 100%;
+    /* إضافة حد أدنى للارتفاع لكي لا يختفي المربع في الشاشات الصغيرة */
+    min-height: 160px; 
     height: 100%;
     background-color: var(--bg);
     border: 1px solid var(--border);
@@ -147,7 +157,8 @@ body {
     border-radius: 6px;
     font-weight: 500;
     font-size: 0.9rem;
-    padding: 10px 16px;
+    /* تحسين مساحة الضغط للمس (Touch targets) */
+    padding: 12px 16px; 
     cursor: pointer;
     transition: background-color 0.2s, color 0.2s;
     border: none;
@@ -206,7 +217,19 @@ body {
 }
 
 .btnMark {
-    padding: 12px;
+    padding: 14px 12px; /* تكبير بسيط للزر لتسهيل الضغط باللمس */
     font-size: 0.95rem;
     font-weight: 600;
+}
+
+/* --- التصميم المتجاوب للشاشات العريضة (الكمبيوتر) --- */
+@media (min-width: 900px) {
+    .app-main {
+        padding: 24px;
+    }
+    .dashboard-grid {
+        /* العودة لـ 3 أعمدة عندما تكون الشاشة واسعة */
+        grid-template-columns: repeat(3, minmax(0, 1fr)); 
+        height: 100%;
+    }
 }

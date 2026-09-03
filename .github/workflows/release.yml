@@ -82,13 +82,17 @@ jobs:
 
       # ===== تغليف لينكس: ELF مباشر + .deb + .rpm + .pkg.tar.zst =====
 
-      # رفع ملف ELF مباشرة بدون أي ضغط
+      # رفع ملف ELF مباشرة بدون أي ضغط وتسميته naqrah-elf-glibc
+      - name: Prepare Linux ELF Binary
+        if: runner.os == 'Linux'
+        run: cp target/release/naqrah naqrah-elf-glibc
+
       - name: Upload Linux ELF Binary
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: Naqrah-Linux-ELF
-          path: target/release/naqrah
+          path: naqrah-elf-glibc
 
       # بناء حزمة .deb (Debian / Ubuntu)
       - name: Build .deb Package
@@ -202,6 +206,41 @@ jobs:
         with:
           name: Naqrah-Windows
           path: Naqrah-Windows.zip
+
+  # ===== إضافة بيئة Alpine Linux (musl libc) =====
+  build-alpine:
+    name: Build Alpine Linux (musl libc)
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          apk update
+          apk add --no-cache build-base rust cargo git pkgconf \
+            webkit2gtk-dev gtk+3.0-dev librsvg-dev patchelf upx \
+            libayatana-appindicator-dev dbus-dev openssl-dev
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
+
+      - name: Build Tauri Binary
+        run: cargo tauri build --no-bundle
+
+      - name: Compress Binary
+        run: upx --best --lzma target/release/naqrah || true
+
+      - name: Prepare musl ELF Binary
+        run: cp target/release/naqrah naqrah-elf-musllibc
+
+      - name: Upload Alpine Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl
+          path: naqrah-elf-musllibc
 
   # ===== بناء حزمة Arch Linux باستخدام PKGBUILD + makepkg -s (مش .PKGINFO يدوي) =====
   # بيشتغل جوه container أرش نفسه عشان الباينري يتبني ويتربط بنسخة glibc/الاعتماديات
@@ -686,7 +725,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-desktop, build-arch, build-void, build-android-universal, build-android]
+    needs: [build-desktop, build-arch, build-void, build-alpine, build-android-universal, build-android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -729,8 +768,10 @@ jobs:
                   echo "| 🐧 **Linux (Arch)** | x86_64 — .pkg.tar.zst | ${size} | [تحميل](${url}) |" ;;
                 *Void*.xbps)
                   echo "| 🐧 **Linux (Void)** | x86_64 glibc — .xbps | ${size} | [تحميل](${url}) |" ;;
-                naqrah)
-                  echo "| 🐧 **Linux (ELF)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
+                naqrah-elf-glibc)
+                  echo "| 🐧 **Linux (glibc)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
+                naqrah-elf-musllibc)
+                  echo "| 🐧 **Alpine Linux (musl)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
                 Naqrah-Android.apk)
                   echo "| 🤖 **Android** | 🌐 عام — يشتغل على أي جهاز | ${size} | [تحميل](${url}) |" ;;
                 *arm64-v8a*)

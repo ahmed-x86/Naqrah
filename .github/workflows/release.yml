@@ -327,8 +327,10 @@ jobs:
             --license GPL \
             --homepage "https://github.com/ahmed-x86/Naqrah" \
             --maintainer "ahmed-x86" \
-            -o Naqrah-Void.xbps \
             void-pkg-root
+            
+          # إعادة تسمية الملف الناتج ليتوافق مع خطوة الرفع
+          mv *.xbps Naqrah-Void.xbps
 
       - name: Upload Void Package Artifact
         uses: actions/upload-artifact@v4

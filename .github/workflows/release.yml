@@ -221,7 +221,7 @@ jobs:
         run: |
           apk update
           apk add --no-cache build-base rust cargo git pkgconf \
-            webkit2gtk4.1-dev gtk+3.0-dev librsvg-dev patchelf upx \
+            webkit2gtk-4.1-dev gtk+3.0-dev librsvg-dev patchelf upx \
             libayatana-appindicator-dev dbus-dev openssl-dev
 
       - name: Install Tauri CLI

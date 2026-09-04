@@ -413,7 +413,8 @@ jobs:
             --maintainer "ahmed-x86" \
             void-pkg-root
             
-          mv *.xbps Naqrah-Void-glibc.xbps
+          # التعديل هنا: استخدمنا الاسم الصريح بدل النجمة
+          mv naqrah-1.0.0_1.x86_64.xbps Naqrah-Void-glibc.xbps
 
       - name: Upload Void glibc Package Artifact
         uses: actions/upload-artifact@v4
@@ -444,7 +445,8 @@ jobs:
             --maintainer "ahmed-x86" \
             void-pkg-root-musl
 
-          mv *.xbps Naqrah-Void-musl.xbps
+          # التعديل هنا: استخدمنا الاسم الصريح بدل النجمة
+          mv naqrah-1.0.0_1.x86_64-musl.xbps Naqrah-Void-musl.xbps
 
       - name: Upload Void musl Package Artifact
         uses: actions/upload-artifact@v4

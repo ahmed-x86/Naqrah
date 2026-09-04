@@ -80,9 +80,9 @@ jobs:
         if: runner.os == 'Windows'
         run: upx --best --lzma target/release/naqrah.exe || true
 
-      # ===== تغليف لينكس: ELF مباشر + .deb + .rpm + .pkg.tar.zst =====
+      # ===== تغليف لينكس: ELF مباشر + .deb + .rpm =====
 
-      # رفع ملف ELF مباشرة بدون أي ضغط وتسميته naqrah-elf-glibc
+      # رفع ملف ELF مباشرة بدون أي ضغط وتسميته naqrah-elf-glibc (لباقي التوزيعات)
       - name: Prepare Linux ELF Binary
         if: runner.os == 'Linux'
         run: cp target/release/naqrah naqrah-elf-glibc
@@ -186,10 +186,6 @@ jobs:
           name: Naqrah-Linux-rpm
           path: Naqrah-Linux.rpm
 
-      # ملاحظة: باكدج Arch (.pkg.tar.zst) عاد بقى ليه job منفصل (build-arch) بيستخدم
-      # PKGBUILD + makepkg -s فعليًا بدل التلفيق اليدوي بـ .PKGINFO + tar اللي كان هنا.
-      # نفس الكلام لـ Void Linux (.xbps) في job (build-void).
-
       # ===== تغليف ويندوز =====
       - name: Package Windows
         if: runner.os == 'Windows'
@@ -207,7 +203,7 @@ jobs:
           name: Naqrah-Windows
           path: Naqrah-Windows.zip
 
-  # ===== إضافة بيئة Alpine Linux (musl libc) =====
+  # ===== بناء بيئة Alpine Linux (musl libc) وتغليفها =====
   build-alpine:
     name: Build Alpine Linux (musl libc)
     runs-on: ubuntu-latest
@@ -271,7 +267,7 @@ jobs:
           url="https://github.com/ahmed-x86/Naqrah"
           arch="x86_64"
           license="GPL"
-          depends="webkit2gtk gtk+3.0 librsvg libayatana-appindicator dbus"
+          depends="webkit2gtk-4.1 gtk+3.0 librsvg libayatana-appindicator dbus"
           source="naqrah naqrah.desktop naqrah.png"
 
           package() {
@@ -295,11 +291,11 @@ jobs:
           name: Naqrah-Alpine-apk
           path: Naqrah-Alpine.apk
 
-  # ===== بناء حزمة Arch Linux باستخدام PKGBUILD + makepkg -s (مش .PKGINFO يدوي) =====
-  # بيشتغل جوه container أرش نفسه عشان الباينري يتبني ويتربط بنسخة glibc/الاعتماديات
-  # المتوفرة فعليًا على أرش، بدل ما نعتمد على باينري اتبنى على ubuntu-latest.
+  # ===== تغليف حزمة Arch Linux (بدون بناء) =====
+  # بيستنى الباينري الجاهز من خطوة build-desktop ويغلفه كحزمة arch
   build-arch:
     name: Build Arch Package (PKGBUILD)
+    needs: build-desktop
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
@@ -307,34 +303,26 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install System Dependencies
-        run: |
-          pacman -Syu --noconfirm --needed rust webkit2gtk-4.1 libappindicator-gtk3 librsvg patchelf upx git sudo
+      - name: Download glibc Binary Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF
+          path: elf-src
 
-      # makepkg بيرفض يشتغل بمستخدم root، فلازم نعمل مستخدم عادي ونديله صلاحية
-      # الكتابة على مجلد المشروع كامل قبل ما نستخدمه في أي خطوة لاحقة.
+      - name: Install Packaging Dependencies
+        run: pacman -Syu --noconfirm --needed sudo
+
       - name: Create Non-root Build User
         run: |
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R builder:builder "$GITHUB_WORKSPACE"
 
-      - name: Install Tauri CLI
-        run: su builder -c "cargo install tauri-cli --version \"^${{ env.TAURI_CLI_VERSION }}\" --locked"
-
-      # بنبني الباينري بس من غير باندلات Tauri الافتراضية، لأن التغليف هيتعمل بـ PKGBUILD
-      - name: Build Tauri Binary
-        run: su builder -c 'export PATH="$HOME/.cargo/bin:$PATH" && cargo tauri build --no-bundle'
-
-      - name: Compress Binary
-        run: upx --best --lzma target/release/naqrah || true
-
-      # ملفات الـ source اللي هيشير لها PKGBUILD لازم تكون جنب بعض في نفس المجلد
-      # عشان makepkg يعرف ينسخهم لـ src/ تلقائيًا (source محلي بدون رابط تحميل)
       - name: Prepare PKGBUILD Sources
         run: |
           mkdir -p arch-pkg
-          cp target/release/naqrah arch-pkg/naqrah
+          cp elf-src/naqrah-elf-glibc arch-pkg/naqrah
+          chmod +x arch-pkg/naqrah
           cp naqrah.desktop arch-pkg/naqrah.desktop
           cp iconn.png arch-pkg/naqrah.png
 
@@ -371,12 +359,11 @@ jobs:
           name: Naqrah-Linux-pkg
           path: Naqrah-Linux.pkg.tar.zst
 
-  # ===== بناء حزمة Void Linux (glibc) بصيغة .xbps =====
-  # xbps-create هي الأداة الرسمية لتغليف باينري جاهز كحزمة xbps من غير الحاجة
-  # لكامل نظام xbps-src/templates (زيها زي checkinstall بس رسمية من Void).
+  # ===== تغليف حزم Void Linux (بدون بناء) =====
+  # بيستنى الباينري الجاهز من ubuntu (للـ glibc) ومن alpine (للـ musl) ويغلفهم
   build-void:
     name: Build Void Linux Packages (.xbps — glibc + musl)
-    needs: build-alpine
+    needs: [build-desktop, build-alpine]
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/void-linux/void-glibc-full:latest
@@ -384,30 +371,33 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # أسماء الحزم في Void مختلفة عن Arch/Debian:
-      # libwebkit2gtk41-devel (اسم باكدج webkit2gtk في Void لحد الإصدار 4.1، مش "webkit2gtk-devel")
-      # + libayatana-appindicator-devel (مش libappindicator) + gtk+3-devel (مش gtk+3 اللي هي runtime بس)
-      - name: Install System Dependencies
+      - name: Install Packaging Dependencies
         run: |
           xbps-install -Suy xbps
           xbps-install -Suy
-          xbps-install -y base-devel rust cargo libwebkit2gtk41-devel gtk+3-devel libayatana-appindicator-devel librsvg-devel patchelf upx git
+          xbps-install -y base-devel
 
-      - name: Build Tauri Binary
-        run: cargo tauri build --no-bundle || (cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked && cargo tauri build --no-bundle)
+      - name: Download glibc Binary Artifact (From Ubuntu Job)
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF
+          path: void-glibc-src
 
-      - name: Compress Binary
-        run: upx --best --lzma target/release/naqrah || true
+      - name: Download musl Binary Artifact (From Alpine Job)
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl
+          path: void-musl-src
 
-      # تجهيز شجرة الملفات زي ما هتتنصب فعليًا على جهاز المستخدم
-      - name: Prepare Package Root
+      - name: Prepare Package Root (glibc)
         run: |
           PKG_ROOT="void-pkg-root"
           mkdir -p "${PKG_ROOT}/usr/bin"
           mkdir -p "${PKG_ROOT}/usr/share/applications"
           mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
 
-          cp target/release/naqrah "${PKG_ROOT}/usr/bin/"
+          cp void-glibc-src/naqrah-elf-glibc "${PKG_ROOT}/usr/bin/naqrah"
+          chmod +x "${PKG_ROOT}/usr/bin/naqrah"
           cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
           cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
 
@@ -422,7 +412,6 @@ jobs:
             --maintainer "ahmed-x86" \
             void-pkg-root
             
-          # إعادة تسمية الملف الناتج (اسم يوضح إنها نسخة glibc)
           mv *.xbps Naqrah-Void-glibc.xbps
 
       - name: Upload Void glibc Package Artifact
@@ -431,14 +420,7 @@ jobs:
           name: Naqrah-Void-glibc-xbps
           path: Naqrah-Void-glibc.xbps
 
-      # ===== تغليف نسخة musl لـ Void =====
-      - name: Download musl Binary Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: Naqrah-Linux-ELF-musl
-          path: void-musl-src
-
-      - name: Prepare musl Package Root
+      - name: Prepare Package Root (musl)
         run: |
           PKG_ROOT="void-pkg-root-musl"
           mkdir -p "${PKG_ROOT}/usr/bin"
@@ -446,7 +428,7 @@ jobs:
           mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
 
           cp void-musl-src/naqrah-elf-musllibc "${PKG_ROOT}/usr/bin/naqrah"
-          chmod 755 "${PKG_ROOT}/usr/bin/naqrah"
+          chmod +x "${PKG_ROOT}/usr/bin/naqrah"
           cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
           cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
 

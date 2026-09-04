@@ -242,6 +242,59 @@ jobs:
           name: Naqrah-Linux-ELF-musl
           path: naqrah-elf-musllibc
 
+      # ===== تغليف Alpine Linux: حزمة .apk رسمية بأداة abuild =====
+      - name: Install abuild Tooling
+        run: apk add --no-cache alpine-sdk sudo
+
+      - name: Create Non-root Build User
+        run: |
+          adduser -D builder
+          addgroup builder abuild
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Generate abuild Signing Key
+        run: su builder -c "abuild-keygen -a -i -n"
+
+      - name: Prepare APKBUILD Sources
+        run: |
+          mkdir -p apk-pkg
+          cp naqrah-elf-musllibc apk-pkg/naqrah
+          cp naqrah.desktop apk-pkg/naqrah.desktop
+          cp iconn.png apk-pkg/naqrah.png
+
+          cat > apk-pkg/APKBUILD <<'EOF'
+          pkgname=naqrah
+          pkgver=1.0.0
+          pkgrel=0
+          pkgdesc="Arabic text diacritics (Tashkeel) editor - محرر تشكيل النصوص العربية"
+          url="https://github.com/ahmed-x86/Naqrah"
+          arch="x86_64"
+          license="GPL"
+          depends="webkit2gtk gtk+3.0 librsvg libayatana-appindicator dbus"
+          source="naqrah naqrah.desktop naqrah.png"
+
+          package() {
+              install -Dm755 "$srcdir"/naqrah "$pkgdir"/usr/bin/naqrah
+              install -Dm644 "$srcdir"/naqrah.desktop "$pkgdir"/usr/share/applications/naqrah.desktop
+              install -Dm644 "$srcdir"/naqrah.png "$pkgdir"/usr/share/icons/hicolor/256x256/apps/naqrah.png
+          }
+          EOF
+          sed -i 's/^          //' apk-pkg/APKBUILD
+
+      - name: Build .apk Package with abuild
+        run: |
+          chown -R builder:builder apk-pkg
+          cd apk-pkg
+          su builder -c "cd \$(pwd) && abuild checksum && abuild -r"
+          find ~builder/packages -name "*.apk" -exec cp {} ../Naqrah-Alpine.apk \;
+
+      - name: Upload Alpine .apk Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Alpine-apk
+          path: Naqrah-Alpine.apk
+
   # ===== بناء حزمة Arch Linux باستخدام PKGBUILD + makepkg -s (مش .PKGINFO يدوي) =====
   # بيشتغل جوه container أرش نفسه عشان الباينري يتبني ويتربط بنسخة glibc/الاعتماديات
   # المتوفرة فعليًا على أرش، بدل ما نعتمد على باينري اتبنى على ubuntu-latest.
@@ -322,7 +375,8 @@ jobs:
   # xbps-create هي الأداة الرسمية لتغليف باينري جاهز كحزمة xbps من غير الحاجة
   # لكامل نظام xbps-src/templates (زيها زي checkinstall بس رسمية من Void).
   build-void:
-    name: Build Void Linux Package (.xbps)
+    name: Build Void Linux Packages (.xbps — glibc + musl)
+    needs: build-alpine
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/void-linux/void-glibc-full:latest
@@ -357,7 +411,7 @@ jobs:
           cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
           cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
 
-      - name: Build .xbps Package with xbps-create
+      - name: Build glibc .xbps Package with xbps-create
         run: |
           xbps-create \
             -A x86_64 \
@@ -368,14 +422,52 @@ jobs:
             --maintainer "ahmed-x86" \
             void-pkg-root
             
-          # إعادة تسمية الملف الناتج ليتوافق مع خطوة الرفع
-          mv *.xbps Naqrah-Void.xbps
+          # إعادة تسمية الملف الناتج (اسم يوضح إنها نسخة glibc)
+          mv *.xbps Naqrah-Void-glibc.xbps
 
-      - name: Upload Void Package Artifact
+      - name: Upload Void glibc Package Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Naqrah-Void-xbps
-          path: Naqrah-Void.xbps
+          name: Naqrah-Void-glibc-xbps
+          path: Naqrah-Void-glibc.xbps
+
+      # ===== تغليف نسخة musl لـ Void =====
+      - name: Download musl Binary Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl
+          path: void-musl-src
+
+      - name: Prepare musl Package Root
+        run: |
+          PKG_ROOT="void-pkg-root-musl"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/share/applications"
+          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
+
+          cp void-musl-src/naqrah-elf-musllibc "${PKG_ROOT}/usr/bin/naqrah"
+          chmod 755 "${PKG_ROOT}/usr/bin/naqrah"
+          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
+          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+
+      - name: Build musl .xbps Package with xbps-create
+        run: |
+          xbps-create \
+            -A x86_64-musl \
+            -n naqrah-1.0.0_1 \
+            -s "Arabic text diacritics (Tashkeel) editor" \
+            --license GPL \
+            --homepage "https://github.com/ahmed-x86/Naqrah" \
+            --maintainer "ahmed-x86" \
+            void-pkg-root-musl
+
+          mv *.xbps Naqrah-Void-musl.xbps
+
+      - name: Upload Void musl Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Void-musl-xbps
+          path: Naqrah-Void-musl.xbps
 
   # ملاحظة: الـ job ده بيشتغل على ubuntu-latest برضو، لكن ده مش تكرار لبناء Linux desktop.
   # ubuntu هنا مجرد "runner" (بيئة تشغيل) لبناء APK الأندرويد عن طريق NDK + Tauri Android.
@@ -766,12 +858,16 @@ jobs:
                   echo "| 🐧 **Linux (Fedora/RHEL)** | x86_64 — .rpm | ${size} | [تحميل](${url}) |" ;;
                 *Linux*.pkg.tar.zst)
                   echo "| 🐧 **Linux (Arch)** | x86_64 — .pkg.tar.zst | ${size} | [تحميل](${url}) |" ;;
-                *Void*.xbps)
+                *Void-glibc*.xbps)
                   echo "| 🐧 **Linux (Void)** | x86_64 glibc — .xbps | ${size} | [تحميل](${url}) |" ;;
+                *Void-musl*.xbps)
+                  echo "| 🐧 **Linux (Void)** | x86_64 musl — .xbps | ${size} | [تحميل](${url}) |" ;;
                 naqrah-elf-glibc)
                   echo "| 🐧 **Linux (glibc)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
                 naqrah-elf-musllibc)
                   echo "| 🐧 **Alpine Linux (musl)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
+                *Alpine*.apk)
+                  echo "| 🐧 **Alpine Linux** | x86_64 — .apk | ${size} | [تحميل](${url}) |" ;;
                 Naqrah-Android.apk)
                   echo "| 🤖 **Android** | 🌐 عام — يشتغل على أي جهاز | ${size} | [تحميل](${url}) |" ;;
                 *arm64-v8a*)
@@ -788,7 +884,7 @@ jobs:
             done
 
             echo ""
-            echo "> 🐧 **مستخدم لينكس؟** حمّل حزمة توزيعتك (.deb لـ Debian/Ubuntu، .rpm لـ Fedora، .pkg.tar.zst لـ Arch، .xbps لـ Void) أو الملف التنفيذي المباشر (ELF)."
+            echo "> 🐧 **مستخدم لينكس؟** حمّل حزمة توزيعتك (.deb لـ Debian/Ubuntu، .rpm لـ Fedora، .pkg.tar.zst لـ Arch، .xbps لـ Void، .apk لـ Alpine) أو الملف التنفيذي المباشر (ELF)."
             echo ""
             echo "> 💡 **مش عارف تختار؟** جرّب نسخة **arm64-v8a** لو موبايلك حديث (2018 فما فوق)، أو حمّل النسخة **العامة (Universal)** لو مش عارف معماريتك وعايز خيار آمن يشتغل على أي جهاز."
             echo ""

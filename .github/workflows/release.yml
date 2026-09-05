@@ -15,33 +15,21 @@ env:
   TAURI_CLI_VERSION: "2.0.0"
 
 jobs:
-  build-desktop:
-    name: Build on ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact: Naqrah-Linux
-          - os: windows-latest
-            artifact: Naqrah-Windows
-
-    runs-on: ${{ matrix.os }}
+  # ===== لينكس (glibc) - المرحلة السريعة: باينري ELF فقط، بدون تغليف =====
+  # الهدف: إنتاج naqrah-elf-glibc بأسرع وقت ممكن، عشان build-arch و build-void
+  # يقدروا يبدأوا فور جاهزيته، من غير ما ينتظروا تغليف deb/rpm (build-linux-packages)
+  # ولا بناء ويندوز (build-windows) اللي كانوا سابقًا جزء من نفس الـ matrix job.
+  build-linux-elf:
+    name: Build Linux ELF (glibc)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. إعداد بيئة لينكس (Tauri dependencies + UPX + أدوات التغليف)
-      - name: Install System Dependencies (Linux)
-        if: runner.os == 'Linux'
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf upx-ucl rpm zstd
-
-      # 2. إعداد بيئة ويندوز (UPX)
-      - name: Install UPX (Windows)
-        if: runner.os == 'Windows'
-        run: choco install upx
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf upx-ucl
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -50,7 +38,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ${{ matrix.os }}-desktop
+          shared-key: ubuntu-latest-desktop
 
       # كاش binary أداة tauri-cli نفسها. المفتاح هنا لازم يتطابق بالظبط بين
       # خطوة "Cache" وخطوة "Install" عشان cache-hit يشتغل صح.
@@ -58,45 +46,58 @@ jobs:
         id: cache-tauri-cli
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cargo/bin/cargo-tauri
-            ~/.cargo/bin/cargo-tauri.exe
+          path: ~/.cargo/bin/cargo-tauri
           key: tauri-cli-bin-${{ runner.os }}-${{ env.TAURI_CLI_VERSION }}
 
       - name: Install Tauri CLI
         if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
         run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
 
-      # 3. بناء تطبيق سطح المكتب
+      # --no-bundle: هنا نحتاج الباينري الخام بس، تغليف deb/rpm بيصير لاحقًا
+      # في build-linux-packages، عشان هذا الـ job يفضل أسرع ما يمكن
       - name: Build Tauri App
-        run: cargo tauri build
+        run: cargo tauri build --no-bundle
 
-      # 4. ضغط الملفات التنفيذية لأقصى درجة (Extreme Compression)
+      # ضغط الملف التنفيذي لأقصى درجة (Extreme Compression)
       - name: Compress Linux Binary
-        if: runner.os == 'Linux'
         run: upx --best --lzma target/release/naqrah || true
 
-      - name: Compress Windows Binary
-        if: runner.os == 'Windows'
-        run: upx --best --lzma target/release/naqrah.exe || true
-
-      # ===== تغليف لينكس: ELF مباشر + .deb + .rpm =====
-
-      # رفع ملف ELF مباشرة بدون أي ضغط وتسميته naqrah-elf-glibc (لباقي التوزيعات)
+      # رفع ملف ELF مباشرة بدون أي تغليف إضافي وتسميته naqrah-elf-glibc (لباقي التوزيعات)
       - name: Prepare Linux ELF Binary
-        if: runner.os == 'Linux'
         run: cp target/release/naqrah naqrah-elf-glibc
 
       - name: Upload Linux ELF Binary
-        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: Naqrah-Linux-ELF
           path: naqrah-elf-glibc
 
+  # ===== لينكس (glibc) - تغليف .deb و .rpm =====
+  # يعتمد بس على الباينري الجاهز من build-linux-elf (مش على إعادة بناء المشروع)
+  build-linux-packages:
+    name: Build Linux Packages (.deb / .rpm)
+    needs: build-linux-elf
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Linux ELF Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF
+          path: elf-src
+
+      - name: Install Packaging Dependencies
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Prepare Binary for Packaging
+        run: |
+          cp elf-src/naqrah-elf-glibc naqrah-bin
+          chmod +x naqrah-bin
+
       # بناء حزمة .deb (Debian / Ubuntu)
       - name: Build .deb Package
-        if: runner.os == 'Linux'
         run: |
           PKG_ROOT="deb-build/naqrah_1.0.0_amd64"
           mkdir -p "${PKG_ROOT}/DEBIAN"
@@ -104,7 +105,7 @@ jobs:
           mkdir -p "${PKG_ROOT}/usr/share/applications"
           mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
 
-          cp target/release/naqrah "${PKG_ROOT}/usr/bin/"
+          cp naqrah-bin "${PKG_ROOT}/usr/bin/naqrah"
           cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
           cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
 
@@ -126,7 +127,6 @@ jobs:
           mv deb-build/*.deb Naqrah-Linux.deb
 
       - name: Upload .deb Artifact
-        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: Naqrah-Linux-deb
@@ -134,13 +134,12 @@ jobs:
 
       # بناء حزمة .rpm (Fedora / RHEL / openSUSE)
       - name: Build .rpm Package
-        if: runner.os == 'Linux'
         run: |
           mkdir -p rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
 
           # تجهيز الملفات المصدرية
           mkdir -p rpmbuild/SOURCES/naqrah-1.0.0
-          cp target/release/naqrah rpmbuild/SOURCES/naqrah-1.0.0/
+          cp naqrah-bin rpmbuild/SOURCES/naqrah-1.0.0/naqrah
           cp naqrah.desktop rpmbuild/SOURCES/naqrah-1.0.0/
           cp iconn.png rpmbuild/SOURCES/naqrah-1.0.0/naqrah.png
           tar -czf rpmbuild/SOURCES/naqrah-1.0.0.tar.gz -C rpmbuild/SOURCES naqrah-1.0.0
@@ -180,15 +179,48 @@ jobs:
           find rpmbuild/RPMS -name "*.rpm" -exec cp {} Naqrah-Linux.rpm \;
 
       - name: Upload .rpm Artifact
-        if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: Naqrah-Linux-rpm
           path: Naqrah-Linux.rpm
 
-      # ===== تغليف ويندوز =====
+  # ===== ويندوز - مستقل تمامًا عن سلسلة اللينكس (glibc/musl) =====
+  build-windows:
+    name: Build on windows-latest
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install UPX (Windows)
+        run: choco install upx
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-latest-desktop
+
+      - name: Cache Tauri CLI binary
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-bin-${{ runner.os }}-${{ env.TAURI_CLI_VERSION }}
+
+      - name: Install Tauri CLI
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
+
+      - name: Build Tauri App
+        run: cargo tauri build
+
+      - name: Compress Windows Binary
+        run: upx --best --lzma target/release/naqrah.exe || true
+
       - name: Package Windows
-        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path Naqrah-Windows
@@ -197,15 +229,16 @@ jobs:
           Compress-Archive -Path Naqrah-Windows -DestinationPath Naqrah-Windows.zip
 
       - name: Upload Windows Artifact
-        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: Naqrah-Windows
           path: Naqrah-Windows.zip
 
-  # ===== بناء بيئة Alpine Linux (musl libc) وتغليفها =====
-  build-alpine:
-    name: Build Alpine Linux (musl libc)
+  # ===== Alpine (musl) - المرحلة السريعة: باينري ELF فقط، بدون تغليف .apk =====
+  # الهدف: إنتاج naqrah-elf-musllibc بأسرع وقت ممكن عشان build-void يقدر يبدأ
+  # فورًا، من غير ما ينتظر تغليف .apk بأداة abuild (build-alpine-apk).
+  build-alpine-elf:
+    name: Build Alpine ELF (musl libc)
     runs-on: ubuntu-latest
     container:
       image: alpine:latest
@@ -238,7 +271,24 @@ jobs:
           name: Naqrah-Linux-ELF-musl
           path: naqrah-elf-musllibc
 
-      # ===== تغليف Alpine Linux: حزمة .apk رسمية بأداة abuild =====
+  # ===== Alpine (musl) - تغليف حزمة .apk رسمية بأداة abuild =====
+  # يعتمد بس على الباينري الجاهز من build-alpine-elf (مش على إعادة بناء المشروع)
+  build-alpine-apk:
+    name: Build Alpine .apk Package
+    needs: build-alpine-elf
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download musl ELF Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl
+          path: elf-src
+
       - name: Install abuild Tooling
         run: apk add --no-cache alpine-sdk sudo
 
@@ -255,7 +305,7 @@ jobs:
       - name: Prepare APKBUILD Sources
         run: |
           mkdir -p apk-pkg
-          cp naqrah-elf-musllibc apk-pkg/naqrah
+          cp elf-src/naqrah-elf-musllibc apk-pkg/naqrah
           cp naqrah.desktop apk-pkg/naqrah.desktop
           cp iconn.png apk-pkg/naqrah.png
 
@@ -281,6 +331,7 @@ jobs:
 
       - name: Build .apk Package with abuild
         run: |
+          chmod +x apk-pkg/naqrah
           chown -R builder:builder apk-pkg
           cd apk-pkg
           su builder -c "cd \$(pwd) && abuild checksum && abuild -r"
@@ -293,10 +344,10 @@ jobs:
           path: Naqrah-Alpine.apk
 
   # ===== تغليف حزمة Arch Linux (بدون بناء) =====
-  # بيستنى الباينري الجاهز من خطوة build-desktop ويغلفه كحزمة arch
+  # بيستنى الباينري الجاهز من build-linux-elf بس (مش تغليف deb/rpm ولا ويندوز)
   build-arch:
     name: Build Arch Package (PKGBUILD)
-    needs: build-desktop
+    needs: build-linux-elf
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
@@ -361,10 +412,11 @@ jobs:
           path: Naqrah-Linux.pkg.tar.zst
 
   # ===== تغليف حزم Void Linux (بدون بناء) =====
-  # بيستنى الباينري الجاهز من ubuntu (للـ glibc) ومن alpine (للـ musl) ويغلفهم
+  # بيستنى الباينري الجاهز بس من build-linux-elf (glibc) و build-alpine-elf (musl)،
+  # مش لازم ينتظر تغليف deb/rpm ولا حزمة .apk ولا بناء ويندوز
   build-void:
     name: Build Void Linux Packages (.xbps — glibc + musl)
-    needs: [build-desktop, build-alpine]
+    needs: [build-linux-elf, build-alpine-elf]
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/void-linux/void-glibc-full:latest
@@ -456,7 +508,7 @@ jobs:
 
   # ملاحظة: الـ job ده بيشتغل على ubuntu-latest برضو، لكن ده مش تكرار لبناء Linux desktop.
   # ubuntu هنا مجرد "runner" (بيئة تشغيل) لبناء APK الأندرويد عن طريق NDK + Tauri Android.
-  # الناتج هنا (.apk) مختلف تمامًا عن ناتج build-desktop (.tar.gz / .zip).
+  # الناتج هنا (.apk) مختلف تمامًا عن ناتج build-linux-elf / build-windows (ELF / .zip).
   #
   # ده الـ APK "العام/الشامل" (Universal) — بيحتوي على كل المعماريات جوه ملف واحد
   # فبيشتغل على أي جهاز أندرويد بدون ما المستخدم يحتاج يعرف معماريته.
@@ -518,7 +570,7 @@ jobs:
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          sed -i 's/"com.naqrah.dev"/"com.ahmed-x86.nagrah"/g' tauri.conf.json
+          sed -i 's/"com.naqrah.dev"/"com.ahmed-x86.naqrah"/g' tauri.conf.json
           if [ ! -d "gen/android" ]; then
             cargo tauri android init
           fi
@@ -697,7 +749,7 @@ jobs:
         env:
           NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
-          sed -i 's/"com.naqrah.dev"/"com.ahmed-x86.nagrah"/g' tauri.conf.json
+          sed -i 's/"com.naqrah.dev"/"com.ahmed-x86.naqrah"/g' tauri.conf.json
           if [ ! -d "gen/android" ]; then
             cargo tauri android init
           fi
@@ -802,7 +854,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-desktop, build-arch, build-void, build-alpine, build-android-universal, build-android]
+    needs: [build-linux-packages, build-windows, build-arch, build-void, build-alpine-apk, build-android-universal, build-android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:

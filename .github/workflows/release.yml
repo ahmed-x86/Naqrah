@@ -289,8 +289,13 @@ jobs:
           name: Naqrah-Linux-ELF-musl
           path: elf-src
 
+      # apk update ضروري هنا: بدونه ما يكون عندنا فهرس محلي للمستودعات،
+      # فـ abuild يفشل في حل الاعتماديات المذكورة في APKBUILD (depends=...)
+      # حتى لو الحزم موجودة فعليًا في مستودعات Alpine
       - name: Install abuild Tooling
-        run: apk add --no-cache alpine-sdk sudo
+        run: |
+          apk update
+          apk add --no-cache alpine-sdk sudo
 
       - name: Create Non-root Build User
         run: |
@@ -559,11 +564,16 @@ jobs:
 
       # كاش مجلد gen/android لتفادي إعادة تهيئة مشروع الأندرويد بالكامل كل مرة
       # v2: cache key متغير عشان نتخلص من أي نسخة مكسورة محفوظة سابقاً
+      # v3: رفعنا رقم النسخة عشان نتخلص من كاش قديم اتبنى باسم حزمة أندرويد
+      # قديم (com.ahmed-x86.nagrah) قبل تصحيح الاسم. وأضفنا هاش ملف الـ
+      # workflow نفسه للمفتاح، عشان أي تغيير مستقبلي على identifier (اللي
+      # بيتحط بـ sed جوه الملف مش في tauri.conf.json مباشرة) يبطل الكاش
+      # تلقائيًا من غير ما نحتاج نرفع رقم النسخة يدويًا كل مرة
       - name: Cache Android project
         uses: actions/cache@v4
         with:
           path: gen/android
-          key: android-gen-v2-universal-${{ hashFiles('tauri.conf.json') }}
+          key: android-gen-v3-universal-${{ hashFiles('tauri.conf.json') }}-${{ hashFiles('.github/workflows/release.yml') }}
 
       # تعديل الباكدج نيم وبناء مجلد أندرويد برمجياً
       - name: Set Package Name & Init Android
@@ -738,11 +748,12 @@ jobs:
       # كاش مجلد gen/android لتفادي إعادة تهيئة مشروع الأندرويد بالكامل كل مرة
       # v2: cache key متغير عشان نتخلص من أي نسخة مكسورة محفوظة سابقاً
       # كل معمارية ليها كاش منفصل عشان الـ 4 VMs بيشتغلوا في نفس الوقت
+      # v3: نفس سبب الرفع في build-android-universal (راجع التعليق هناك)
       - name: Cache Android project
         uses: actions/cache@v4
         with:
           path: gen/android
-          key: android-gen-v2-${{ matrix.arch }}-${{ hashFiles('tauri.conf.json') }}
+          key: android-gen-v3-${{ matrix.arch }}-${{ hashFiles('tauri.conf.json') }}-${{ hashFiles('.github/workflows/release.yml') }}
 
       # تعديل الباكدج نيم وبناء مجلد أندرويد برمجياً
       - name: Set Package Name & Init Android

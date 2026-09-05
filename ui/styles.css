@@ -1,3 +1,4 @@
+/* ===== الثيم الغامق (الافتراضي) ===== */
 :root {
     --bg: #09090b;
     --card: #121215;
@@ -11,6 +12,22 @@
     --secondary-hover: #3f3f46;
     --ring: #d4d4d8;
     --highlight: #facc15;
+}
+
+/* ===== الثيم الفاتح ===== */
+body.light {
+    --bg: #f4f4f5;
+    --card: #ffffff;
+    --border: #d4d4d8;
+    --text: #18181b;
+    --muted: #71717a;
+
+    --primary: #18181b;
+    --primary-fg: #f4f4f5;
+    --secondary: #e4e4e7;
+    --secondary-hover: #d4d4d8;
+    --ring: #52525b;
+    --highlight: #ca8a04;
 }
 
 * {
@@ -29,6 +46,7 @@ body {
     /* إبقاء overflow: hidden هنا لمنع ارتداد الصفحة بأكملها */
     overflow: hidden; 
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.3s, color 0.3s;
 }
 
 .app-header {
@@ -39,7 +57,8 @@ body {
     align-items: center;
     padding: 0 24px;
     /* للحفاظ على حجم الهيدر ثابت */
-    flex-shrink: 0; 
+    flex-shrink: 0;
+    transition: background-color 0.3s, border-color 0.3s;
 }
 
 .header-right {
@@ -53,6 +72,7 @@ body {
     height: 20px;
     background-color: var(--text);
     border-radius: 4px;
+    transition: background-color 0.3s;
 }
 
 .app-title {
@@ -61,6 +81,7 @@ body {
     letter-spacing: -0.02em;
 }
 
+/* ===== منطقة المحتوى الرئيسية ===== */
 .app-main {
     flex: 1;
     padding: 16px;
@@ -68,7 +89,17 @@ body {
     overflow-y: auto; 
     overflow-x: hidden;
     /* لجعل التمرير ناعماً على شاشات اللمس */
-    -webkit-overflow-scrolling: touch; 
+    -webkit-overflow-scrolling: touch;
+    /* حجز مساحة للشريط السفلي */
+    padding-bottom: 80px;
+}
+
+/* ===== إخفاء/إظهار الصفحات ===== */
+.page {
+    display: none;
+}
+.page.active {
+    display: block;
 }
 
 .dashboard-grid {
@@ -85,6 +116,7 @@ body {
     border-radius: 12px;
     display: flex;
     flex-direction: column;
+    transition: background-color 0.3s, border-color 0.3s;
 }
 
 .card-header {
@@ -215,6 +247,11 @@ body {
     box-shadow: 0 0 15px rgba(250, 204, 21, 0.2);
 }
 
+body.light .highlight-char {
+    background-color: rgba(202, 138, 4, 0.12);
+    box-shadow: 0 0 15px rgba(202, 138, 4, 0.2);
+}
+
 /* شبكة أزرار الحركات */
 .marks-grid {
     display: grid;
@@ -309,10 +346,221 @@ body {
     border-color: #52525b;
 }
 
+body.light #btnNextChar {
+    background-color: #e4e4e7;
+    border-color: #d4d4d8;
+    color: #18181b;
+}
+body.light #btnNextChar:hover {
+    background-color: #d4d4d8;
+    border-color: #a1a1aa;
+}
+
+/* ===== الشريط السفلي (Bottom Navigation) ===== */
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background-color: var(--card);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    z-index: 100;
+    flex-shrink: 0;
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+.nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 0;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nav-item:hover {
+    color: var(--text);
+}
+
+.nav-item.active {
+    color: var(--highlight);
+}
+
+.nav-icon-svg {
+    width: 22px;
+    height: 22px;
+}
+
+.nav-label {
+    font-size: 0.75rem;
+}
+
+/* ===== صفحة الإعدادات ===== */
+.settings-container {
+    max-width: 600px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.settings-section {
+    background-color: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+.settings-section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text);
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 0;
+}
+
+.settings-row + .settings-row {
+    border-top: 1px solid var(--border);
+}
+
+.settings-label {
+    font-size: 0.9rem;
+    color: var(--text);
+}
+
+.settings-description {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: 2px;
+}
+
+/* أزرار الثيم */
+.theme-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.theme-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.theme-btn:hover {
+    background-color: var(--secondary);
+}
+
+.theme-btn.active {
+    background-color: var(--primary);
+    color: var(--primary-fg);
+    border-color: var(--primary);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    width: 48px;
+    height: 26px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--secondary);
+    border: 1px solid var(--border);
+    border-radius: 26px;
+    transition: all 0.3s;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    height: 20px;
+    width: 20px;
+    right: 2px;
+    bottom: 2px;
+    background-color: var(--muted);
+    border-radius: 50%;
+    transition: all 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: var(--highlight);
+    border-color: var(--highlight);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(-22px);
+    background-color: #fff;
+}
+
+/* خيارات فرعية */
+.sub-options {
+    padding-right: 20px;
+    margin-top: 4px;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.sub-options.visible {
+    max-height: 200px;
+    opacity: 1;
+}
+
+/* Radio-like behavior for diacritics options */
+.diacritics-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
 /* --- التصميم المتجاوب للشاشات العريضة (الكمبيوتر) --- */
 @media (min-width: 900px) {
     .app-main {
         padding: 24px;
+        padding-bottom: 80px;
     }
     .dashboard-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr)); 

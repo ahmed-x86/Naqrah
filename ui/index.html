@@ -15,60 +15,148 @@
     </header>
 
     <main class="app-main">
-        <div class="dashboard-grid">
-            <!-- العمود الأول: النص المدخل -->
-            <div class="card">
-                <div class="card-header">
-                    <h2 class="card-title">النص المدخل</h2>
-                    <p class="card-subtitle">أدخل النص الذي تود تشكيله هنا</p>
-                </div>
-                <div class="card-content flex-grow">
-                    <textarea id="inputText" class="textarea" placeholder="أهلاً بك..."></textarea>
-                </div>
-                <div class="card-footer">
-                    <button id="btnStartTashkeel" class="btn btn-primary w-full">ابدأ التشكيل</button>
-                </div>
-            </div>
-
-            <!-- العمود الثاني: لوحة التشكيل -->
-            <div class="card">
-                <div class="card-header text-center">
-                    <h2 class="card-title">لوحة التشكيل</h2>
-                    <p class="card-subtitle">اختر الحركات المناسبة للحرف المظلل</p>
-                </div>
-                <div class="card-content flex-grow flex-center">
-                    <div id="currentWordLabel" class="word-display">الكلمة</div>
-                    <div class="marks-grid">
-                        <button class="btn btn-outline btnMark" data-mark="َ">فتحة (ـَ)</button>
-                        <button class="btn btn-outline btnMark" data-mark="ُ">ضمة (ـُ)</button>
-                        <button class="btn btn-outline btnMark" data-mark="ِ">كسرة (ـِ)</button>
-                        <button class="btn btn-outline btnMark" data-mark="ْ">سكون (ـْ)</button>
-                        <button class="btn btn-outline btnMark" data-mark="ّ">شدة (ـّ)</button>
-                        <button class="btn btn-outline btnMark" data-mark="ً">تنوين فتح (ـً)</button>
-                        <button class="btn btn-outline btnMark" data-mark="ٌ">تنوين ضم (ـٌ)</button>
-                        <button class="btn btn-outline btnMark" data-mark="ٍ">تنوين كسر (ـٍ)</button>
+        <!-- ===== الصفحة الرئيسية ===== -->
+        <div id="page-home" class="page active">
+            <div class="dashboard-grid">
+                <!-- العمود الأول: النص المدخل -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">النص المدخل</h2>
+                        <p class="card-subtitle">أدخل النص الذي تود تشكيله هنا</p>
+                    </div>
+                    <div class="card-content flex-grow">
+                        <textarea id="inputText" class="textarea" placeholder="أهلاً بك..."></textarea>
+                    </div>
+                    <div class="card-footer">
+                        <button id="btnStartTashkeel" class="btn btn-primary w-full">ابدأ التشكيل</button>
                     </div>
                 </div>
-                <div class="card-footer">
-                    <button id="btnNextChar" class="btn btn-secondary w-full">إنهاء</button>
+
+                <!-- العمود الثاني: لوحة التشكيل -->
+                <div class="card">
+                    <div class="card-header text-center">
+                        <h2 class="card-title">لوحة التشكيل</h2>
+                        <p class="card-subtitle">اختر الحركات المناسبة للحرف المظلل</p>
+                    </div>
+                    <div class="card-content flex-grow flex-center">
+                        <div id="currentWordLabel" class="word-display">الكلمة</div>
+                        <div class="marks-grid">
+                            <button class="btn btn-outline btnMark" data-mark="َ">فتحة (ـَ)</button>
+                            <button class="btn btn-outline btnMark" data-mark="ُ">ضمة (ـُ)</button>
+                            <button class="btn btn-outline btnMark" data-mark="ِ">كسرة (ـِ)</button>
+                            <button class="btn btn-outline btnMark" data-mark="ْ">سكون (ـْ)</button>
+                            <button class="btn btn-outline btnMark" data-mark="ّ">شدة (ـّ)</button>
+                            <button class="btn btn-outline btnMark" data-mark="ً">تنوين فتح (ـً)</button>
+                            <button class="btn btn-outline btnMark" data-mark="ٌ">تنوين ضم (ـٌ)</button>
+                            <button class="btn btn-outline btnMark" data-mark="ٍ">تنوين كسر (ـٍ)</button>
+                        </div>
+                    </div>
+                    <div class="card-footer">
+                        <button id="btnNextChar" class="btn btn-secondary w-full">إنهاء</button>
+                    </div>
+                </div>
+
+                <!-- العمود الثالث: النتيجة -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">النتيجة</h2>
+                        <p class="card-subtitle">النص النهائي المشكّل</p>
+                    </div>
+                    <div class="card-content flex-grow">
+                        <textarea id="outputText" class="textarea" readonly placeholder="ستظهر النتيجة هنا..."></textarea>
+                    </div>
+                    <div class="card-footer">
+                        <button id="btnCopy" class="btn btn-outline w-full">نسخ النص</button>
+                    </div>
                 </div>
             </div>
+        </div>
 
-            <!-- العمود الثالث: النتيجة -->
-            <div class="card">
-                <div class="card-header">
-                    <h2 class="card-title">النتيجة</h2>
-                    <p class="card-subtitle">النص النهائي المشكّل</p>
+        <!-- ===== صفحة الإعدادات ===== -->
+        <div id="page-settings" class="page">
+            <div class="settings-container">
+                <!-- قسم الثيم -->
+                <div class="settings-section">
+                    <h3 class="settings-section-title">المظهر</h3>
+                    <div class="settings-row">
+                        <div>
+                            <div class="settings-label">الثيم</div>
+                        </div>
+                        <div class="theme-buttons">
+                            <button id="btnThemeLight" class="theme-btn">فاتح</button>
+                            <button id="btnThemeDark" class="theme-btn active">غامق</button>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-content flex-grow">
-                    <textarea id="outputText" class="textarea" readonly placeholder="ستظهر النتيجة هنا..."></textarea>
-                </div>
-                <div class="card-footer">
-                    <button id="btnCopy" class="btn btn-outline w-full">نسخ النص</button>
+
+                <!-- قسم معالجة النص المشكّل -->
+                <div class="settings-section">
+                    <h3 class="settings-section-title">لو النص الداخل مشكّل</h3>
+                    <div class="diacritics-options">
+                        <!-- الخيار 1: أخذه بدون تشكيل -->
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label">أخذه بدون تشكيل</div>
+                                <div class="settings-description">يزيل جميع علامات التشكيل من النص ويخليك تشكّل من الصفر</div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleStripDiacritics">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <!-- الخيارات الفرعية لأخذه بدون تشكيل -->
+                        <div id="stripDiacriticsSubOptions" class="sub-options">
+                            <div class="settings-row">
+                                <div>
+                                    <div class="settings-label">تجاوز الشدة</div>
+                                    <div class="settings-description">يزيل الشدة أيضاً مع باقي التشكيل</div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="toggleSkipShadda">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <div class="settings-row">
+                                <div>
+                                    <div class="settings-label">وضع علامة على الشدة</div>
+                                    <div class="settings-description">يبقي الشدة في مكانها ويزيل باقي التشكيل</div>
+                                </div>
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="toggleMarkShadda">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- الخيار 2: أخذه بتشكيل -->
+                        <div class="settings-row">
+                            <div>
+                                <div class="settings-label">أخذه بتشكيل</div>
+                                <div class="settings-description">يبقي التشكيل الموجود ويتخطى الحروف المُشكّلة تلقائياً</div>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggleKeepDiacritics">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </main>
+
+    <!-- ===== الشريط السفلي ===== -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" data-page="page-home">
+            <svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            <span class="nav-label">الرئيسية</span>
+        </button>
+        <button class="nav-item" data-page="page-settings">
+            <svg class="nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span class="nav-label">الإعدادات</span>
+        </button>
+    </nav>
+
     <script src="main.js"></script>
 </body>
 </html>

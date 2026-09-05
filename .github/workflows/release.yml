@@ -184,6 +184,118 @@ jobs:
           name: Naqrah-Linux-rpm
           path: Naqrah-Linux.rpm
 
+  # ===== لينكس (musl) - تغليف .deb و .rpم بنفس أسلوب نسخة glibc بالظبط =====
+  # ملاحظة: دي تغليف بسيط للباينري الجاهز، مش تحقق من التوافق مع كل توزيعة
+  build-linux-packages-musl:
+    name: Build Linux Packages (.deb / .rpm — musl)
+    needs: build-alpine-elf
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download musl ELF Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl
+          path: elf-src
+
+      - name: Install Packaging Dependencies
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Prepare Binary for Packaging
+        run: |
+          cp elf-src/naqrah-elf-musllibc naqrah-bin
+          chmod +x naqrah-bin
+
+      # بناء حزمة .deb من باينري musl
+      - name: Build .deb Package
+        run: |
+          PKG_ROOT="deb-build/naqrah_1.0.0_amd64"
+          mkdir -p "${PKG_ROOT}/DEBIAN"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/share/applications"
+          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
+
+          cp naqrah-bin "${PKG_ROOT}/usr/bin/naqrah"
+          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
+          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+
+          cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
+          Package: naqrah
+          Version: 1.0.0
+          Architecture: amd64
+          Maintainer: ahmed-x86
+          Description: Naqrah - Arabic text diacritics (Tashkeel) editor (musl build)
+           محرر تشكيل النصوص العربية بواجهة رسومية حديثة
+          Section: utils
+          Priority: optional
+          EOF
+
+          # إزالة المسافات البادئة من ملف control (heredoc بيضيف مسافات)
+          sed -i 's/^          //' "${PKG_ROOT}/DEBIAN/control"
+
+          dpkg-deb --build --root-owner-group "${PKG_ROOT}"
+          mv deb-build/*.deb Naqrah-Linux-musl.deb
+
+      - name: Upload .deb Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-musl-deb
+          path: Naqrah-Linux-musl.deb
+
+      # بناء حزمة .rpm من باينري musl
+      - name: Build .rpm Package
+        run: |
+          mkdir -p rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+
+          # تجهيز الملفات المصدرية
+          mkdir -p rpmbuild/SOURCES/naqrah-1.0.0
+          cp naqrah-bin rpmbuild/SOURCES/naqrah-1.0.0/naqrah
+          cp naqrah.desktop rpmbuild/SOURCES/naqrah-1.0.0/
+          cp iconn.png rpmbuild/SOURCES/naqrah-1.0.0/naqrah.png
+          tar -czf rpmbuild/SOURCES/naqrah-1.0.0.tar.gz -C rpmbuild/SOURCES naqrah-1.0.0
+
+          cat > rpmbuild/SPECS/naqrah.spec <<'SPEC'
+          Name:           naqrah
+          Version:        1.0.0
+          Release:        1%{?dist}
+          Summary:        Arabic text diacritics (Tashkeel) editor (musl build)
+          License:        GPL
+          Source0:        naqrah-1.0.0.tar.gz
+
+          %description
+          Naqrah - محرر تشكيل النصوص العربية بواجهة رسومية حديثة
+
+          %prep
+          %setup -q
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+          cp naqrah %{buildroot}/usr/bin/
+          cp naqrah.desktop %{buildroot}/usr/share/applications/
+          cp naqrah.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/
+
+          %files
+          /usr/bin/naqrah
+          /usr/share/applications/naqrah.desktop
+          /usr/share/icons/hicolor/256x256/apps/naqrah.png
+          SPEC
+
+          # إزالة المسافات البادئة
+          sed -i 's/^          //' rpmbuild/SPECS/naqrah.spec
+
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/naqrah.spec
+          find rpmbuild/RPMS -name "*.rpm" -exec cp {} Naqrah-Linux-musl.rpm \;
+
+      - name: Upload .rpm Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-musl-rpm
+          path: Naqrah-Linux-musl.rpm
+
   # ===== ويندوز - مستقل تمامًا عن سلسلة اللينكس (glibc/musl) =====
   build-windows:
     name: Build on windows-latest
@@ -416,6 +528,74 @@ jobs:
           name: Naqrah-Linux-pkg
           path: Naqrah-Linux.pkg.tar.zst
 
+  # ===== تغليف باينري musl كحزمة Arch (.pkg.tar.zst) - نفس أسلوب نسخة glibc بالظبط =====
+  # ملاحظة: دي تغليف بسيط للباينري الجاهز، مش تحقق من التوافق مع كل توزيعة
+  build-arch-musl:
+    name: Build Arch Package (PKGBUILD — musl)
+    needs: build-alpine-elf
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download musl Binary Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl
+          path: elf-src
+
+      - name: Install Packaging Dependencies
+        run: pacman -Syu --noconfirm --needed sudo
+
+      - name: Create Non-root Build User
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Prepare PKGBUILD Sources
+        run: |
+          mkdir -p arch-pkg
+          cp elf-src/naqrah-elf-musllibc arch-pkg/naqrah
+          chmod +x arch-pkg/naqrah
+          cp naqrah.desktop arch-pkg/naqrah.desktop
+          cp iconn.png arch-pkg/naqrah.png
+
+          cat > arch-pkg/PKGBUILD <<'EOF'
+          pkgname=naqrah
+          pkgver=1.0.0
+          pkgrel=1
+          pkgdesc="Arabic text diacritics (Tashkeel) editor (musl build) - محرر تشكيل النصوص العربية"
+          arch=('x86_64')
+          url="https://github.com/ahmed-x86/Naqrah"
+          license=('GPL')
+          depends=('webkit2gtk-4.1' 'gtk3')
+          source=("naqrah" "naqrah.desktop" "naqrah.png")
+          sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+          package() {
+              install -Dm755 "${srcdir}/naqrah" "${pkgdir}/usr/bin/naqrah"
+              install -Dm644 "${srcdir}/naqrah.desktop" "${pkgdir}/usr/share/applications/naqrah.desktop"
+              install -Dm644 "${srcdir}/naqrah.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+          }
+          EOF
+          sed -i 's/^          //' arch-pkg/PKGBUILD
+
+      - name: Build Package with makepkg -s
+        run: |
+          chown -R builder:builder arch-pkg
+          cd arch-pkg
+          su builder -c "makepkg -s --noconfirm"
+          mv naqrah-1.0.0-1-x86_64.pkg.tar.zst ../Naqrah-Linux-musl.pkg.tar.zst
+
+      - name: Upload Arch Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-musl-pkg
+          path: Naqrah-Linux-musl.pkg.tar.zst
+
   # ===== تغليف حزم Void Linux (بدون بناء) =====
   # بيستنى الباينري الجاهز بس من build-linux-elf (glibc) و build-alpine-elf (musl)،
   # مش لازم ينتظر تغليف deb/rpm ولا حزمة .apk ولا بناء ويندوز
@@ -469,7 +649,7 @@ jobs:
             --homepage "https://github.com/ahmed-x86/Naqrah" \
             --maintainer "ahmed-x86" \
             void-pkg-root
-            
+
           # التعديل هنا: استخدمنا الاسم الصريح بدل النجمة
           mv naqrah-1.0.0_1.x86_64.xbps Naqrah-Void-glibc.xbps
 
@@ -865,7 +1045,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-windows, build-arch, build-void, build-alpine-apk, build-android-universal, build-android]
+    needs: [build-linux-packages, build-linux-packages-musl, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -875,8 +1055,10 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      # بيبني جدول تحميل زي البرامج الكبيرة، فيه المنصة والمعمارية والحجم ورابط
-      # مباشر لكل ملف، ويتحط كـ body للـ Release
+      # بيبني 3 جداول (لينكس / أندرويد / ويندوز) بدل جدول واحد طويل، كل خانة
+      # فيها حجم الملف نفسه وهو كمان رابط تحميل مباشر. الخانات اللي مفيش
+      # ليها ملف (زي glibc + apk، لأن أدوات .apk مبنية على Alpine/musl بس)
+      # بتتحط "-----" بدالها.
       - name: Generate Download Table
         id: notes
         run: |
@@ -884,57 +1066,55 @@ jobs:
           REPO="${{ github.repository }}"
           BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
 
+          # يرجع حجم الملف كرابط تحميل Markdown، أو "-----" لو الملف مش موجود أصلاً
+          cell() {
+            local file="$1"
+            local path="artifacts/${file}"
+            if [ -f "$path" ]; then
+              local size
+              size=$(du -h "$path" | cut -f1 | sed 's/[[:space:]]*//g')
+              echo "[${size}](${BASE_URL}/${file})"
+            else
+              echo "-----"
+            fi
+          }
+
           {
             echo "## 📦 Naqrah ${TAG}"
             echo ""
-            echo "اختر النسخة المناسبة لجهازك من الجدول تحت وحمّلها مباشرة 👇"
+            echo "اختر النسخة المناسبة لجهازك من الجدول تحت وحمّلها مباشرة (الحجم نفسه هو رابط التحميل) 👇"
             echo ""
-            echo "| 💻 المنصة | 🏗️ المعمارية | 📁 الحجم | ⬇️ التحميل |"
-            echo "|:---|:---|:---:|:---:|"
 
-            for f in artifacts/*; do
-              name=$(basename "$f")
-              size=$(du -h "$f" | cut -f1 | sed 's/[[:space:]]*//g')
-              url="${BASE_URL}/${name}"
-
-              case "$name" in
-                *Windows*)
-                  echo "| 🪟 **Windows** | x86_64 | ${size} | [تحميل](${url}) |" ;;
-                *Linux*.deb)
-                  echo "| 🐧 **Linux (Debian/Ubuntu)** | x86_64 — .deb | ${size} | [تحميل](${url}) |" ;;
-                *Linux*.rpm)
-                  echo "| 🐧 **Linux (Fedora/RHEL)** | x86_64 — .rpm | ${size} | [تحميل](${url}) |" ;;
-                *Linux*.pkg.tar.zst)
-                  echo "| 🐧 **Linux (Arch)** | x86_64 — .pkg.tar.zst | ${size} | [تحميل](${url}) |" ;;
-                *Void-glibc*.xbps)
-                  echo "| 🐧 **Linux (Void)** | x86_64 glibc — .xbps | ${size} | [تحميل](${url}) |" ;;
-                *Void-musl*.xbps)
-                  echo "| 🐧 **Linux (Void)** | x86_64 musl — .xbps | ${size} | [تحميل](${url}) |" ;;
-                naqrah-elf-glibc)
-                  echo "| 🐧 **Linux (glibc)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
-                naqrah-elf-musllibc)
-                  echo "| 🐧 **Alpine Linux (musl)** | x86_64 — ملف تنفيذي مباشر | ${size} | [تحميل](${url}) |" ;;
-                *Alpine*.apk)
-                  echo "| 🐧 **Alpine Linux** | x86_64 — .apk | ${size} | [تحميل](${url}) |" ;;
-                Naqrah-Android.apk)
-                  echo "| 🤖 **Android** | 🌐 عام — يشتغل على أي جهاز | ${size} | [تحميل](${url}) |" ;;
-                *arm64-v8a*)
-                  echo "| 🤖 **Android** | ARM64 (v8a) — الأجهزة الحديثة | ${size} | [تحميل](${url}) |" ;;
-                *armeabi-v7a*)
-                  echo "| 🤖 **Android** | ARMv7 (v7a) — أندرويد 6 فما فوق | ${size} | [تحميل](${url}) |" ;;
-                *x86_64*)
-                  echo "| 🤖 **Android** | x86_64 — أجهزة المحاكاة/الإنتل | ${size} | [تحميل](${url}) |" ;;
-                *x86*)
-                  echo "| 🤖 **Android** | x86 — أجهزة المحاكاة/الإنتل | ${size} | [تحميل](${url}) |" ;;
-                *)
-                  echo "| 📦 **أخرى** | - | ${size} | [تحميل](${url}) |" ;;
-              esac
-            done
-
+            echo "### 🐧 لينكس (x86_64)"
             echo ""
-            echo "> 🐧 **مستخدم لينكس؟** حمّل حزمة توزيعتك (.deb لـ Debian/Ubuntu، .rpm لـ Fedora، .pkg.tar.zst لـ Arch، .xbps لـ Void، .apk لـ Alpine) أو الملف التنفيذي المباشر (ELF)."
+            echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
+            echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
+            echo "| **glibc** | $(cell naqrah-elf-glibc) | $(cell Naqrah-Linux.deb) | $(cell Naqrah-Linux.rpm) | $(cell Naqrah-Linux.pkg.tar.zst) | $(cell Naqrah-Void-glibc.xbps) | ----- |"
+            echo "| **musl**  | $(cell naqrah-elf-musllibc) | $(cell Naqrah-Linux-musl.deb) | $(cell Naqrah-Linux-musl.rpm) | $(cell Naqrah-Linux-musl.pkg.tar.zst) | $(cell Naqrah-Void-musl.xbps) | $(cell Naqrah-Alpine.apk) |"
             echo ""
-            echo "> 💡 **مش عارف تختار؟** جرّب نسخة **arm64-v8a** لو موبايلك حديث (2018 فما فوق)، أو حمّل النسخة **العامة (Universal)** لو مش عارف معماريتك وعايز خيار آمن يشتغل على أي جهاز."
+
+            echo "### 🤖 أندرويد"
+            echo ""
+            echo "| التحميل \\ المعمارية | x86 | x86_64 | armv7 | armv8 | 🌐 عام (Universal) |"
+            echo "|:---|:---:|:---:|:---:|:---:|:---:|"
+            echo "| **APK** | $(cell Naqrah-Android-x86.apk) | $(cell Naqrah-Android-x86_64.apk) | $(cell Naqrah-Android-armeabi-v7a.apk) | $(cell Naqrah-Android-arm64-v8a.apk) | $(cell Naqrah-Android.apk) |"
+            echo ""
+
+            echo "### 🪟 ويندوز"
+            echo ""
+            echo "| الصيغة \\ المعمارية | x86_64 |"
+            echo "|:---|:---:|"
+            echo "| **أرشيف (exe + المكتبات)** | $(cell Naqrah-Windows.zip) |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "> 🐧 **إيه هو ملف الـ ELF؟** ده صيغة البرامج التنفيذية الأساسية في لينكس (زي .exe في ويندوز). حمّله، وعشان تشغّله: دوس عليه Right Click ثم Properties/خصائص وفعّل خيار \"اجعله قابل للتنفيذ / Executable\"، أو من التيرمنال اكتب:"
+            echo ">"
+            echo "> \`chmod +x /path/to/file\`"
+            echo ">"
+            echo "> 📦 **glibc ولا musl؟** لو مش عارف، غالبًا توزيعتك بتستخدم **glibc** (زي Ubuntu، Debian، Fedora، Arch، Void...) وده الاختيار الآمن لمعظم الناس. أما **musl** فبتستخدمها توزيعات زي Alpine، ومستخدميها عادةً عارفين إنهم بيستخدموها."
+            echo ">"
+            echo "> 💡 **مش عارف تختار (أندرويد)؟** جرّب نسخة **arm64-v8a** لو موبايلك حديث (2018 فما فوق)، أو حمّل النسخة **العامة (Universal)** لو مش عارف معماريتك وعايز خيار آمن يشتغل على أي جهاز."
             echo ""
             echo "---"
           } > RELEASE_NOTES.md

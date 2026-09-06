@@ -155,6 +155,39 @@ jobs:
           name: Naqrah-Linux-ELF-arm64
           path: naqrah-elf-glibc-arm64
 
+  # ===== FreeBSD (x86_64) - باينري ELF فقط، بدون تغليف =====
+  # جيت-هَب مبيوفرش رانرز FreeBSD أصلاً (بس Ubuntu/Windows/macOS)، فبنستخدم
+  # vmactions/freebsd-vm اللي بيشغّل VM حقيقي بمعمارية FreeBSD جوه رانر
+  # ubuntu-latest عادي (عن طريق QEMU). الكود بيتعمله sync تلقائي جوه الـ VM،
+  # والملفات الناتجة (زي الباينري) بترجع تلقائيًا لمجلد الشغل على الهوست
+  # بعد ما الخطوة تخلص (copyback: true)، عشان نقدر نرفعها بـ upload-artifact
+  # عادي بعد كده.
+  build-freebsd-elf:
+    name: Build FreeBSD ELF (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build inside FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.2"
+          usesh: true
+          copyback: true
+          prepare: |
+            pkg install -y rust cargo pkgconf webkit2-gtk3 gtk3 librsvg2 patchelf
+          run: |
+            cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
+            cargo tauri build --no-bundle
+            cp target/release/naqrah naqrah-elf-freebsd-x86_64
+
+      - name: Upload FreeBSD ELF Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-FreeBSD-ELF
+          path: naqrah-elf-freebsd-x86_64
+
   # ===== لينكس (glibc, arm64) - تغليف .deb و .rpm =====
   # نفس أسلوب نسخة x86_64 بالظبط: جوب مستقل بياخد الباينري الجاهز من
   # build-linux-elf-arm64 بس ويغلفه، من غير ما يعيد بناء المشروع.
@@ -1392,7 +1425,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
+    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -1446,6 +1479,13 @@ jobs:
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
             echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | ----- | ----- | ----- |"
             echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | ----- | ----- |"
+            echo ""
+
+            echo "### FreeBSD (x86_64)"
+            echo ""
+            echo "| الصيغة \\ المعمارية | x86_64 |"
+            echo "|:---|:---:|"
+            echo "| **ELF** | $(cell naqrah-elf-freebsd-x86_64) |"
             echo ""
 
             echo "### 🤖 أندرويد"

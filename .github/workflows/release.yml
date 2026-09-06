@@ -176,7 +176,7 @@ jobs:
           usesh: true
           copyback: true
           prepare: |
-            pkg install -y rust cargo pkgconf webkit2-gtk3 gtk3 librsvg2 patchelf
+            pkg install -y rust pkgconf webkit2-gtk41 gtk3 librsvg2 patchelf
           run: |
             cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
             cargo tauri build --no-bundle

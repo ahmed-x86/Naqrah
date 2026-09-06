@@ -1043,9 +1043,69 @@ jobs:
           name: Naqrah-Android-${{ matrix.arch }}
           path: Naqrah-Android-${{ matrix.arch }}.apk
 
+  # ===== ماك (MacOS) - Intel & ARM =====
+  build-macos:
+    name: Build MacOS (${{ matrix.arch }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64
+            rust_target: aarch64-apple-darwin
+          - arch: x86_64
+            rust_target: x86_64-apple-darwin
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-${{ matrix.arch }}
+
+      - name: Cache Tauri CLI binary
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-bin-${{ runner.os }}-${{ env.TAURI_CLI_VERSION }}
+
+      - name: Install Tauri CLI
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
+
+      - name: Build Tauri App
+        run: cargo tauri build --target ${{ matrix.rust_target }}
+
+      - name: Package Mac
+        run: |
+          find target/${{ matrix.rust_target }}/release/bundle/dmg -name "*.dmg" -exec cp {} Naqrah-MacOS-${{ matrix.arch }}.dmg \;
+          APP_DIR=$(find target/${{ matrix.rust_target }}/release/bundle/macos -name "*.app" -type d | head -n 1)
+          if [ -n "$APP_DIR" ]; then
+            tar -czf Naqrah-MacOS-${{ matrix.arch }}-app.tar.gz -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")"
+          fi
+
+      - name: Upload MacOS DMG Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-MacOS-${{ matrix.arch }}-dmg
+          path: Naqrah-MacOS-${{ matrix.arch }}.dmg
+
+      - name: Upload MacOS APP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-MacOS-${{ matrix.arch }}-app
+          path: Naqrah-MacOS-${{ matrix.arch }}-app.tar.gz
+
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-linux-packages-musl, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android]
+    needs: [build-linux-packages, build-linux-packages-musl, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -1106,6 +1166,15 @@ jobs:
             echo "|:---|:---:|"
             echo "| **أرشيف (exe + المكتبات)** | $(cell Naqrah-Windows.zip) |"
             echo ""
+            
+            echo "### 🍎 ماك (MacOS)"
+            echo ""
+            echo "| الصيغة \\ المعمارية | Apple Silicon (M1/M2) | Intel (x86_64) |"
+            echo "|:---|:---:|:---:|"
+            echo "| **DMG** | $(cell Naqrah-MacOS-aarch64.dmg) | $(cell Naqrah-MacOS-x86_64.dmg) |"
+            echo "| **APP (tar.gz)** | $(cell Naqrah-MacOS-aarch64-app.tar.gz) | $(cell Naqrah-MacOS-x86_64-app.tar.gz) |"
+            echo ""
+            
             echo "---"
             echo ""
             echo "> 🐧 **إيه هو ملف الـ ELF؟** ده صيغة البرامج التنفيذية الأساسية في لينكس (زي .exe في ويندوز). حمّله، وعشان تشغّله: دوس عليه Right Click ثم Properties/خصائص وفعّل خيار \"اجعله قابل للتنفيذ / Executable\"، أو من التيرمنال اكتب:"

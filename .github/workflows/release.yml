@@ -598,44 +598,56 @@ jobs:
   # ===== Alpine (musl) - arm64 - باينري ELF فقط، من غير أي تغليف حاليًا =====
   # نفس أسلوب build-alpine-elf بالظبط بس على معمارية arm64 (ubuntu-24.04-arm).
   # مفاتيح الكاش لازم تختلف عن نسخة x86_64 عشان ما يحصلش تصادم.
+  # ملحوظة مهمة: شيلنا "container: image: alpine:latest" من مستوى الجوب.
+  # السبب: أكشنز زي actions/checkout و actions/cache و actions/upload-artifact
+  # هي JavaScript Actions، وجيت-هَب مبيدعمهاش جوه كونتينر Alpine (musl) إلا
+  # على رانرز x64 بس. على arm64 بتفشل فورًا بخطأ:
+  # "JavaScript Actions in Alpine containers are only supported on x64 Linux runners."
+  # الحل: نخلي الـ checkout/cache/upload يشتغلوا طبيعي على الرانر نفسه
+  # (ubuntu-24.04-arm وهو Ubuntu عادي، مش Alpine)، ونستخدم docker run يدويًا
+  # عشان نعمل البناء الفعلي جوه كونتينر Alpine حقيقي (musl libc).
   build-alpine-elf-arm64:
     name: Build Alpine ELF (musl libc, arm64)
     runs-on: ubuntu-24.04-arm
-    container:
-      image: alpine:latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install System Dependencies
-        run: |
-          apk update
-          apk add --no-cache build-base rust cargo git pkgconf \
-            webkit2gtk-4.1-dev gtk+3.0-dev librsvg-dev patchelf upx \
-            libayatana-appindicator-dev dbus-dev openssl-dev \
-            tar
-
+      # كاش لمجلد cargo (registry/git) ومجلد target، بنخزنهم في مسار على
+      # الهوست وبعدين بنعمل mount ليهم جوه كونتينر Alpine عشان الكاش يفضل شغال
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: alpine-latest-desktop-arm64
-
-      - name: Cache Tauri CLI binary
-        id: cache-tauri-cli
         uses: actions/cache@v4
         with:
-          path: ~/.cargo/bin/cargo-tauri
-          key: tauri-cli-bin-alpine-arm64-${{ env.TAURI_CLI_VERSION }}
+          path: |
+            ~/.cargo-alpine-arm64
+            target
+          key: alpine-arm64-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            alpine-arm64-cargo-
 
-      - name: Install Tauri CLI
-        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
-        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
-
-      - name: Build Tauri Binary
-        run: cargo tauri build --no-bundle
-
-      - name: Compress Binary
-        run: upx --best --lzma target/release/naqrah || true
+      # كل خطوات التثبيت والبناء بقت جوه سطر واحد (docker run) بيشغل
+      # كونتينر Alpine حقيقي، بدل ما الجوب كله يكون جواه (وده اللي كان بيكسر
+      # الأكشنز الجاهزة). $GITHUB_WORKSPACE بيتعمله mount عشان الكونتينر
+      # يشتغل على نفس ملفات المشروع، والتغييرات (الباينري الناتج) بترجع
+      # تلقائيًا للهوست لأنه bind mount مش نسخة.
+      - name: Build inside Alpine container (musl, arm64)
+        run: |
+          mkdir -p "$HOME/.cargo-alpine-arm64"
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -v "$HOME/.cargo-alpine-arm64:/root/.cargo" \
+            -w /workspace \
+            alpine:latest \
+            sh -c "
+              set -e
+              apk update
+              apk add --no-cache build-base rust cargo git pkgconf \
+                webkit2gtk-4.1-dev gtk+3.0-dev librsvg-dev patchelf upx \
+                libayatana-appindicator-dev dbus-dev openssl-dev tar
+              cargo install tauri-cli --version '^${{ env.TAURI_CLI_VERSION }}' --locked
+              cargo tauri build --no-bundle
+              upx --best --lzma target/release/naqrah || true
+            "
 
       - name: Prepare musl ELF Binary
         run: cp target/release/naqrah naqrah-elf-musllibc-arm64

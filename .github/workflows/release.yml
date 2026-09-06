@@ -58,6 +58,31 @@ jobs:
       - name: Build Tauri App
         run: cargo tauri build --no-bundle
 
+      # بناء AppImage (glibc x86_64 بس - مفيش AppImage لـ musl أصلاً).
+      # بنعملها هنا جوه نفس الجوب مباشرة بعد البناء، عشان AppImage مش مجرد
+      # تغليف باينري زي deb/rpm - محتاجة tauri-cli نفسه يجمع الأيقونات
+      # والمكتبات و.desktop. لأن الكود متبني بالفعل، cargo build هنا هيكون
+      # فوري (incremental) وهيكمل على طول لمرحلة التغليف، فمش محتاجين جوب
+      # منفصل يعيد بناء المشروع من الصفر زي ما كان هيحصل لو فصلناها.
+      # لازم قبل خطوة الـ upx عشان الـ AppImage تاخد نسخة الباينري النضيفة.
+      - name: Build AppImage
+        env:
+          # يشغل appimagetool/linuxdeploy بدون FUSE، لأن runners أوبونتو
+          # الحديثة مبيجيش فيها libfuse2 افتراضيًا وده بيفشّل بناء AppImage
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: cargo tauri build --bundles appimage
+
+      - name: Locate and Rename AppImage
+        run: |
+          APPIMAGE_FILE=$(find target/release/bundle/appimage -name "*.AppImage" | head -n 1)
+          cp "$APPIMAGE_FILE" Naqrah-Linux-glibc.AppImage
+
+      - name: Upload AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-AppImage
+          path: Naqrah-Linux-glibc.AppImage
+
       # ضغط الملف التنفيذي لأقصى درجة (Extreme Compression)
       - name: Compress Linux Binary
         run: upx --best --lzma target/release/naqrah || true
@@ -1346,10 +1371,10 @@ jobs:
 
             echo "### 🐧 لينكس (x86_64)"
             echo ""
-            echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
-            echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
-            echo "| **glibc** | $(cell naqrah-elf-glibc) | $(cell Naqrah-Linux.deb) | $(cell Naqrah-Linux.rpm) | $(cell Naqrah-Linux.pkg.tar.zst) | $(cell Naqrah-Void-glibc.xbps) | ----- |"
-            echo "| **musl**  | $(cell naqrah-elf-musllibc) | $(cell Naqrah-Linux-musl.deb) | $(cell Naqrah-Linux-musl.rpm) | $(cell Naqrah-Linux-musl.pkg.tar.zst) | $(cell Naqrah-Void-musl.xbps) | $(cell Naqrah-Alpine.apk) |"
+            echo "| المكتبة \\ الصيغة | ELF | AppImage | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
+            echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
+            echo "| **glibc** | $(cell naqrah-elf-glibc) | $(cell Naqrah-Linux-glibc.AppImage) | $(cell Naqrah-Linux.deb) | $(cell Naqrah-Linux.rpm) | $(cell Naqrah-Linux.pkg.tar.zst) | $(cell Naqrah-Void-glibc.xbps) | ----- |"
+            echo "| **musl**  | $(cell naqrah-elf-musllibc) | ----- | $(cell Naqrah-Linux-musl.deb) | $(cell Naqrah-Linux-musl.rpm) | $(cell Naqrah-Linux-musl.pkg.tar.zst) | $(cell Naqrah-Void-musl.xbps) | $(cell Naqrah-Alpine.apk) |"
             echo ""
 
             echo "### 🐧 لينكس (aarch64)"

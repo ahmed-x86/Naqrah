@@ -130,6 +130,122 @@ jobs:
           name: Naqrah-Linux-ELF-arm64
           path: naqrah-elf-glibc-arm64
 
+  # ===== لينكس (glibc, arm64) - تغليف .deb و .rpm =====
+  # نفس أسلوب نسخة x86_64 بالظبط: جوب مستقل بياخد الباينري الجاهز من
+  # build-linux-elf-arm64 بس ويغلفه، من غير ما يعيد بناء المشروع.
+  # التغليف نفسه (dpkg-deb / rpmbuild) بيشتغل عادي على أي معمارية،
+  # فمش محتاجين runner من نوع arm64 هنا، ubuntu-latest كفاية.
+  build-linux-packages-arm64:
+    name: Build Linux Packages (.deb / .rpm — arm64)
+    needs: build-linux-elf-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download Linux ELF Binary (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-arm64
+          path: elf-src
+
+      - name: Install Packaging Dependencies
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Prepare Binary for Packaging
+        run: |
+          cp elf-src/naqrah-elf-glibc-arm64 naqrah-bin
+          chmod +x naqrah-bin
+
+      # بناء حزمة .deb (Debian / Ubuntu) - arm64
+      - name: Build .deb Package
+        run: |
+          PKG_ROOT="deb-build/naqrah_1.0.0_arm64"
+          mkdir -p "${PKG_ROOT}/DEBIAN"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/share/applications"
+          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
+
+          cp naqrah-bin "${PKG_ROOT}/usr/bin/naqrah"
+          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
+          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+
+          cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
+          Package: naqrah
+          Version: 1.0.0
+          Architecture: arm64
+          Maintainer: ahmed-x86
+          Description: Naqrah - Arabic text diacritics (Tashkeel) editor
+           محرر تشكيل النصوص العربية بواجهة رسومية حديثة
+          Section: utils
+          Priority: optional
+          EOF
+
+          # إزالة المسافات البادئة من ملف control (heredoc بيضيف مسافات)
+          sed -i 's/^          //' "${PKG_ROOT}/DEBIAN/control"
+
+          dpkg-deb --build --root-owner-group "${PKG_ROOT}"
+          mv deb-build/*.deb Naqrah-Linux-arm64.deb
+
+      - name: Upload .deb Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-arm64-deb
+          path: Naqrah-Linux-arm64.deb
+
+      # بناء حزمة .rpm (Fedora / RHEL / openSUSE) - aarch64
+      - name: Build .rpm Package
+        run: |
+          mkdir -p rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+
+          # تجهيز الملفات المصدرية
+          mkdir -p rpmbuild/SOURCES/naqrah-1.0.0
+          cp naqrah-bin rpmbuild/SOURCES/naqrah-1.0.0/naqrah
+          cp naqrah.desktop rpmbuild/SOURCES/naqrah-1.0.0/
+          cp iconn.png rpmbuild/SOURCES/naqrah-1.0.0/naqrah.png
+          tar -czf rpmbuild/SOURCES/naqrah-1.0.0.tar.gz -C rpmbuild/SOURCES naqrah-1.0.0
+
+          cat > rpmbuild/SPECS/naqrah.spec <<'SPEC'
+          Name:           naqrah
+          Version:        1.0.0
+          Release:        1%{?dist}
+          Summary:        Arabic text diacritics (Tashkeel) editor
+          License:        GPL
+          Source0:        naqrah-1.0.0.tar.gz
+          BuildArch:      aarch64
+
+          %description
+          Naqrah - محرر تشكيل النصوص العربية بواجهة رسومية حديثة
+
+          %prep
+          %setup -q
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+          cp naqrah %{buildroot}/usr/bin/
+          cp naqrah.desktop %{buildroot}/usr/share/applications/
+          cp naqrah.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/
+
+          %files
+          /usr/bin/naqrah
+          /usr/share/applications/naqrah.desktop
+          /usr/share/icons/hicolor/256x256/apps/naqrah.png
+          SPEC
+
+          # إزالة المسافات البادئة
+          sed -i 's/^          //' rpmbuild/SPECS/naqrah.spec
+
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" --target aarch64-linux -bb rpmbuild/SPECS/naqrah.spec
+          find rpmbuild/RPMS -name "*.rpm" -exec cp {} Naqrah-Linux-arm64.rpm \;
+
+      - name: Upload .rpm Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-arm64-rpm
+          path: Naqrah-Linux-arm64.rpm
+
   # ===== لينكس (glibc) - تغليف .deb و .rpm =====
   # يعتمد بس على الباينري الجاهز من build-linux-elf (مش على إعادة بناء المشروع)
   build-linux-packages:
@@ -421,7 +537,8 @@ jobs:
           apk update
           apk add --no-cache build-base rust cargo git pkgconf \
             webkit2gtk-4.1-dev gtk+3.0-dev librsvg-dev patchelf upx \
-            libayatana-appindicator-dev dbus-dev openssl-dev
+            libayatana-appindicator-dev dbus-dev openssl-dev \
+            tar
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -1188,7 +1305,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
+    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -1240,7 +1357,7 @@ jobs:
             echo ""
             echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
-            echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | ----- | ----- | ----- | ----- | ----- |"
+            echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | ----- | ----- | ----- |"
             echo "| **musl**  | ----- | ----- | ----- | ----- | ----- | ----- |"
             echo ""
 

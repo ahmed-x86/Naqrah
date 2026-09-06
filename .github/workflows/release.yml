@@ -72,6 +72,64 @@ jobs:
           name: Naqrah-Linux-ELF
           path: naqrah-elf-glibc
 
+  # ===== لينكس (glibc) - arm64 - بناء فقط (بدون تغليف) =====
+  # زي build-linux-elf بالظبط بس على معمارية arm64، باستخدام الـ runner
+  # الرسمي من GitHub (ubuntu-24.04-arm) بدل إعداد QEMU/Docker.
+  # ملحوظة: مفاتيح الكاش (rust-cache و tauri-cli) لازم تكون مختلفة عن
+  # نسخة x86_64 عشان ما يحصلش تصادم بين باينري/كاش المعماريتين
+  # (runner.os بيرجع "Linux" في الحالتين، فمضفنا runner.arch للتفرقة).
+  build-linux-elf-arm64:
+    name: Build Linux ELF (glibc, arm64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf upx-ucl
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # كاش لمكتبات ومشروع Rust (target/, registry)
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ubuntu-24.04-arm-desktop
+
+      # كاش binary أداة tauri-cli نفسها. المفتاح هنا لازم يتطابق بالظبط بين
+      # خطوة "Cache" وخطوة "Install" عشان cache-hit يشتغل صح.
+      - name: Cache Tauri CLI binary
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-bin-${{ runner.os }}-${{ runner.arch }}-${{ env.TAURI_CLI_VERSION }}
+
+      - name: Install Tauri CLI
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
+
+      # --no-bundle: نفس فلسفة نسخة x86_64، باينري خام بس بدون أي تغليف
+      - name: Build Tauri App
+        run: cargo tauri build --no-bundle
+
+      # ضغط الملف التنفيذي لأقصى درجة (Extreme Compression)
+      - name: Compress Linux Binary
+        run: upx --best --lzma target/release/naqrah || true
+
+      # رفع ملف ELF مباشرة بدون أي تغليف إضافي وتسميته naqrah-elf-glibc-arm64
+      - name: Prepare Linux ELF Binary
+        run: cp target/release/naqrah naqrah-elf-glibc-arm64
+
+      - name: Upload Linux ELF Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-arm64
+          path: naqrah-elf-glibc-arm64
+
   # ===== لينكس (glibc) - تغليف .deb و .rpm =====
   # يعتمد بس على الباينري الجاهز من build-linux-elf (مش على إعادة بناء المشروع)
   build-linux-packages:
@@ -1130,7 +1188,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-linux-packages-musl, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
+    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -1176,6 +1234,14 @@ jobs:
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
             echo "| **glibc** | $(cell naqrah-elf-glibc) | $(cell Naqrah-Linux.deb) | $(cell Naqrah-Linux.rpm) | $(cell Naqrah-Linux.pkg.tar.zst) | $(cell Naqrah-Void-glibc.xbps) | ----- |"
             echo "| **musl**  | $(cell naqrah-elf-musllibc) | $(cell Naqrah-Linux-musl.deb) | $(cell Naqrah-Linux-musl.rpm) | $(cell Naqrah-Linux-musl.pkg.tar.zst) | $(cell Naqrah-Void-musl.xbps) | $(cell Naqrah-Alpine.apk) |"
+            echo ""
+
+            echo "### 🐧 لينكس (aarch64)"
+            echo ""
+            echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
+            echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
+            echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | ----- | ----- | ----- | ----- | ----- |"
+            echo "| **musl**  | ----- | ----- | ----- | ----- | ----- | ----- |"
             echo ""
 
             echo "### 🤖 أندرويد"

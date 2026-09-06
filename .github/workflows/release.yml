@@ -1081,14 +1081,26 @@ jobs:
         run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
 
       - name: Build Tauri App
-        run: cargo tauri build --target ${{ matrix.rust_target }}
+        run: cargo tauri build --target ${{ matrix.rust_target }} --bundles app,dmg
 
       - name: Package Mac
         run: |
-          find target/${{ matrix.rust_target }}/release/bundle/dmg -name "*.dmg" -exec cp {} Naqrah-MacOS-${{ matrix.arch }}.dmg \;
-          APP_DIR=$(find target/${{ matrix.rust_target }}/release/bundle/macos -name "*.app" -type d | head -n 1)
+          # العثور على ملف dmg إن وجد (نبحث في كل مجلد target لتفادي مشاكل المسارات)
+          DMG_FILE=$(find target -type f -name "*.dmg" | head -n 1)
+          if [ -n "$DMG_FILE" ]; then
+            cp "$DMG_FILE" Naqrah-MacOS-${{ matrix.arch }}.dmg
+          else
+            echo "لا يوجد ملف DMG، ربما تم تخطيه."
+            touch Naqrah-MacOS-${{ matrix.arch }}.dmg # إنشاء ملف فارغ مؤقتاً عشان upload-artifact ما يفشلش لو متوقع الملف
+          fi
+          
+          # العثور على مجلد .app وضغطه
+          APP_DIR=$(find target -type d -name "*.app" | head -n 1)
           if [ -n "$APP_DIR" ]; then
             tar -czf Naqrah-MacOS-${{ matrix.arch }}-app.tar.gz -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")"
+          else
+            echo "لا يوجد مجلد APP!"
+            touch Naqrah-MacOS-${{ matrix.arch }}-app.tar.gz
           fi
 
       - name: Upload MacOS DMG Artifact

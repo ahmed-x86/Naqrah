@@ -133,12 +133,12 @@ jobs:
   # ===== لينكس (glibc, arm64) - تغليف .deb و .rpm =====
   # نفس أسلوب نسخة x86_64 بالظبط: جوب مستقل بياخد الباينري الجاهز من
   # build-linux-elf-arm64 بس ويغلفه، من غير ما يعيد بناء المشروع.
-  # التغليف نفسه (dpkg-deb / rpmbuild) بيشتغل عادي على أي معمارية،
-  # فمش محتاجين runner من نوع arm64 هنا، ubuntu-latest كفاية.
+  # شغال على runner من نوع aarch64 حقيقي (ubuntu-24.04-arm) عشان
+  # rpmbuild/dpkg-deb يشتغلوا native على نفس معمارية الباينري.
   build-linux-packages-arm64:
     name: Build Linux Packages (.deb / .rpm — arm64)
     needs: build-linux-elf-arm64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -212,7 +212,6 @@ jobs:
           Summary:        Arabic text diacritics (Tashkeel) editor
           License:        GPL
           Source0:        naqrah-1.0.0.tar.gz
-          BuildArch:      aarch64
 
           %description
           Naqrah - محرر تشكيل النصوص العربية بواجهة رسومية حديثة
@@ -237,7 +236,7 @@ jobs:
           # إزالة المسافات البادئة
           sed -i 's/^          //' rpmbuild/SPECS/naqrah.spec
 
-          rpmbuild --define "_topdir $(pwd)/rpmbuild" --target aarch64-linux -bb rpmbuild/SPECS/naqrah.spec
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/naqrah.spec
           find rpmbuild/RPMS -name "*.rpm" -exec cp {} Naqrah-Linux-arm64.rpm \;
 
       - name: Upload .rpm Artifact

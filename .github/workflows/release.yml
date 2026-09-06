@@ -595,6 +595,57 @@ jobs:
           name: Naqrah-Linux-ELF-musl
           path: naqrah-elf-musllibc
 
+  # ===== Alpine (musl) - arm64 - باينري ELF فقط، من غير أي تغليف حاليًا =====
+  # نفس أسلوب build-alpine-elf بالظبط بس على معمارية arm64 (ubuntu-24.04-arm).
+  # مفاتيح الكاش لازم تختلف عن نسخة x86_64 عشان ما يحصلش تصادم.
+  build-alpine-elf-arm64:
+    name: Build Alpine ELF (musl libc, arm64)
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: alpine:latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies
+        run: |
+          apk update
+          apk add --no-cache build-base rust cargo git pkgconf \
+            webkit2gtk-4.1-dev gtk+3.0-dev librsvg-dev patchelf upx \
+            libayatana-appindicator-dev dbus-dev openssl-dev \
+            tar
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: alpine-latest-desktop-arm64
+
+      - name: Cache Tauri CLI binary
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-bin-alpine-arm64-${{ env.TAURI_CLI_VERSION }}
+
+      - name: Install Tauri CLI
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
+        run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
+
+      - name: Build Tauri Binary
+        run: cargo tauri build --no-bundle
+
+      - name: Compress Binary
+        run: upx --best --lzma target/release/naqrah || true
+
+      - name: Prepare musl ELF Binary
+        run: cp target/release/naqrah naqrah-elf-musllibc-arm64
+
+      - name: Upload Alpine Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl-arm64
+          path: naqrah-elf-musllibc-arm64
+
   # ===== Alpine (musl) - تغليف حزمة .apk رسمية بأداة abuild =====
   # يعتمد بس على الباينري الجاهز من build-alpine-elf (مش على إعادة بناء المشروع)
   build-alpine-apk:
@@ -1329,7 +1380,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
+    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -1382,7 +1433,7 @@ jobs:
             echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
             echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | ----- | ----- | ----- |"
-            echo "| **musl**  | ----- | ----- | ----- | ----- | ----- | ----- |"
+            echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | ----- | ----- |"
             echo ""
 
             echo "### 🤖 أندرويد"

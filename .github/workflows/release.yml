@@ -365,7 +365,20 @@ jobs:
             webkit2gtk-4.1-dev gtk+3.0-dev librsvg-dev patchelf upx \
             libayatana-appindicator-dev dbus-dev openssl-dev
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: alpine-latest-desktop
+
+      - name: Cache Tauri CLI binary
+        id: cache-tauri-cli
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: tauri-cli-bin-alpine-${{ env.TAURI_CLI_VERSION }}
+
       - name: Install Tauri CLI
+        if: steps.cache-tauri-cli.outputs.cache-hit != 'true'
         run: cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
 
       - name: Build Tauri Binary

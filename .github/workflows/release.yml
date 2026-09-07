@@ -1052,9 +1052,9 @@ jobs:
           path: Naqrah-Void-musl.xbps
 
   # ===== تغليف حزم Void Linux (بدون بناء) (arm64) =====
-  build-void-arm64:
-    name: Build Void Linux Packages (.xbps — glibc + musl, arm64)
-    needs: [build-linux-elf-arm64, build-alpine-elf-arm64]
+  build-void-glibc-arm64:
+    name: Build Void Linux Packages (.xbps — glibc, arm64)
+    needs: [build-linux-elf-arm64]
     runs-on: ubuntu-24.04-arm
     container:
       image: ghcr.io/void-linux/void-glibc-full:latest
@@ -1073,12 +1073,6 @@ jobs:
         with:
           name: Naqrah-Linux-ELF-arm64
           path: void-glibc-src-arm64
-
-      - name: Download musl Binary Artifact (arm64)
-        uses: actions/download-artifact@v4
-        with:
-          name: Naqrah-Linux-ELF-musl-arm64
-          path: void-musl-src-arm64
 
       - name: Prepare Package Root (glibc)
         run: |
@@ -1110,6 +1104,28 @@ jobs:
         with:
           name: Naqrah-Void-glibc-arm64-xbps
           path: Naqrah-Void-glibc-arm64.xbps
+
+  build-void-musl-arm64:
+    name: Build Void Linux Packages (.xbps — musl, arm64)
+    needs: [build-alpine-elf-arm64]
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: ghcr.io/void-linux/void-glibc-full:latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Packaging Dependencies
+        run: |
+          xbps-install -Suy xbps
+          xbps-install -Suy
+          xbps-install -y base-devel
+
+      - name: Download musl Binary Artifact (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl-arm64
+          path: void-musl-src-arm64
 
       - name: Prepare Package Root (musl)
         run: |
@@ -1568,7 +1584,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-musl, build-void, build-void-arm64, build-alpine-apk, build-android-universal, build-android, build-macos]
+    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-musl, build-void, build-void-glibc-arm64, build-void-musl-arm64, build-alpine-apk, build-android-universal, build-android, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -1577,6 +1593,12 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+
+      - name: Generate Hashes
+        run: |
+          cd artifacts
+          md5sum * > hashes.txt
+          cat hashes.txt
 
       # بيبني 3 جداول (لينكس / أندرويد / ويندوز) بدل جدول واحد طويل، كل خانة
       # فيها حجم الملف نفسه وهو كمان رابط تحميل مباشر. الخانات اللي مفيش
@@ -1597,6 +1619,23 @@ jobs:
               local size
               size=$(du -h "$path" | cut -f1 | sed 's/[[:space:]]*//g')
               echo "[${size}](${BASE_URL}/${file})"
+            else
+              echo "-----"
+            fi
+          }
+
+          # يرجع هاش MD5 للملف، أو "-----" لو الملف مش موجود
+          hash_cell() {
+            local file="$1"
+            local path="artifacts/${file}"
+            if [ -f "$path" ]; then
+              local hash
+              hash=$(grep "  ${file}$" artifacts/hashes.txt | awk '{print $1}')
+              if [ -z "$hash" ]; then
+                  echo "-----"
+              else
+                  echo "\`${hash}\`"
+              fi
             else
               echo "-----"
             fi
@@ -1651,6 +1690,56 @@ jobs:
             echo "|:---|:---:|:---:|"
             echo "| **DMG** | $(cell Naqrah-MacOS-aarch64.dmg) | $(cell Naqrah-MacOS-x86_64.dmg) |"
             echo "| **APP (tar.gz)** | $(cell Naqrah-MacOS-aarch64-app.tar.gz) | $(cell Naqrah-MacOS-x86_64-app.tar.gz) |"
+            echo ""
+
+            echo "---"
+            echo "## 🔐 التحقق من الملفات (MD5 Hashes)"
+            echo "للتأكد من سلامة الملفات، يمكنك مطابقة الـ MD5 Hash الخاص بالملف المحمل مع الجداول أدناه. كما تم إرفاق ملف \`hashes.txt\` مع الإصدار."
+            echo ""
+
+            echo "### 🐧 لينكس (x86_64)"
+            echo ""
+            echo "| المكتبة \\ الصيغة | ELF | AppImage | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
+            echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
+            echo "| **glibc** | $(hash_cell naqrah-elf-glibc) | $(hash_cell Naqrah-Linux-glibc.AppImage) | $(hash_cell Naqrah-Linux.deb) | $(hash_cell Naqrah-Linux.rpm) | $(hash_cell Naqrah-Linux.pkg.tar.zst) | $(hash_cell Naqrah-Void-glibc.xbps) | ----- |"
+            echo "| **musl**  | $(hash_cell naqrah-elf-musllibc) | ----- | $(hash_cell Naqrah-Linux-musl.deb) | $(hash_cell Naqrah-Linux-musl.rpm) | $(hash_cell Naqrah-Linux-musl.pkg.tar.zst) | $(hash_cell Naqrah-Void-musl.xbps) | $(hash_cell Naqrah-Alpine.apk) |"
+            echo ""
+
+            echo "### 🐧 لينكس (aarch64)"
+            echo ""
+            echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
+            echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
+            echo "| **glibc** | $(hash_cell naqrah-elf-glibc-arm64) | $(hash_cell Naqrah-Linux-arm64.deb) | $(hash_cell Naqrah-Linux-arm64.rpm) | ----- | $(hash_cell Naqrah-Void-glibc-arm64.xbps) | ----- |"
+            echo "| **musl**  | $(hash_cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | $(hash_cell Naqrah-Void-musl-arm64.xbps) | ----- |"
+            echo ""
+
+            echo "### FreeBSD (x86_64)"
+            echo ""
+            echo "| الصيغة \\ المعمارية | x86_64 |"
+            echo "|:---|:---:|"
+            echo "| **ELF** | $(hash_cell naqrah-elf-freebsd-x86_64) |"
+            echo ""
+
+            echo "### 🤖 أندرويد"
+            echo ""
+            echo "| التحميل \\ المعمارية | x86 | x86_64 | armv7 | armv8 | 🌐 عام (Universal) |"
+            echo "|:---|:---:|:---:|:---:|:---:|:---:|"
+            echo "| **APK** | $(hash_cell Naqrah-Android-x86.apk) | $(hash_cell Naqrah-Android-x86_64.apk) | $(hash_cell Naqrah-Android-armeabi-v7a.apk) | $(hash_cell Naqrah-Android-arm64-v8a.apk) | $(hash_cell Naqrah-Android.apk) |"
+            echo ""
+
+            echo "### 🪟 ويندوز"
+            echo ""
+            echo "| الصيغة \\ المعمارية | x86_64 |"
+            echo "|:---|:---:|"
+            echo "| **أرشيف (exe + المكتبات)** | $(hash_cell Naqrah-Windows.zip) |"
+            echo ""
+            
+            echo "### 🍎 ماك (MacOS)"
+            echo ""
+            echo "| الصيغة \\ المعمارية | Apple Silicon (M1/M2) | Intel (x86_64) |"
+            echo "|:---|:---:|:---:|"
+            echo "| **DMG** | $(hash_cell Naqrah-MacOS-aarch64.dmg) | $(hash_cell Naqrah-MacOS-x86_64.dmg) |"
+            echo "| **APP (tar.gz)** | $(hash_cell Naqrah-MacOS-aarch64-app.tar.gz) | $(hash_cell Naqrah-MacOS-x86_64-app.tar.gz) |"
             echo ""
             
             echo "---"

@@ -579,6 +579,116 @@ jobs:
           name: Naqrah-Linux-musl-rpm
           path: Naqrah-Linux-musl.rpm
 
+  build-linux-packages-musl-arm64:
+    name: Build Linux Packages (.deb / .rpm — musl, arm64)
+    needs: build-alpine-elf-arm64
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download musl ELF Binary (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl-arm64
+          path: elf-src
+
+      - name: Install Packaging Dependencies
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      - name: Prepare Binary for Packaging
+        run: |
+          cp elf-src/naqrah-elf-musllibc-arm64 naqrah-bin
+          chmod +x naqrah-bin
+
+      # بناء حزمة .deb من باينري musl (arm64)
+      - name: Build .deb Package
+        run: |
+          PKG_ROOT="deb-build/naqrah_1.0.0_arm64"
+          mkdir -p "${PKG_ROOT}/DEBIAN"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/share/applications"
+          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
+
+          cp naqrah-bin "${PKG_ROOT}/usr/bin/naqrah"
+          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
+          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+
+          cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
+          Package: naqrah
+          Version: 1.0.0
+          Architecture: arm64
+          Maintainer: ahmed-x86
+          Description: Naqrah - Arabic text diacritics (Tashkeel) editor (musl build)
+           محرر تشكيل النصوص العربية بواجهة رسومية حديثة
+          Section: utils
+          Priority: optional
+          EOF
+
+          # إزالة المسافات البادئة من ملف control (heredoc بيضيف مسافات)
+          sed -i 's/^          //' "${PKG_ROOT}/DEBIAN/control"
+
+          dpkg-deb --build --root-owner-group "${PKG_ROOT}"
+          mv deb-build/*.deb Naqrah-Linux-musl-arm64.deb
+
+      - name: Upload .deb Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-musl-arm64-deb
+          path: Naqrah-Linux-musl-arm64.deb
+
+      # بناء حزمة .rpm من باينري musl (aarch64)
+      - name: Build .rpm Package
+        run: |
+          mkdir -p rpmbuild/{SPECS,SOURCES,BUILD,RPMS,SRPMS}
+
+          # تجهيز الملفات المصدرية
+          mkdir -p rpmbuild/SOURCES/naqrah-1.0.0
+          cp naqrah-bin rpmbuild/SOURCES/naqrah-1.0.0/naqrah
+          cp naqrah.desktop rpmbuild/SOURCES/naqrah-1.0.0/
+          cp iconn.png rpmbuild/SOURCES/naqrah-1.0.0/naqrah.png
+          tar -czf rpmbuild/SOURCES/naqrah-1.0.0.tar.gz -C rpmbuild/SOURCES naqrah-1.0.0
+
+          cat > rpmbuild/SPECS/naqrah.spec <<'SPEC'
+          Name:           naqrah
+          Version:        1.0.0
+          Release:        1%{?dist}
+          Summary:        Arabic text diacritics (Tashkeel) editor (musl build)
+          License:        GPL
+          Source0:        naqrah-1.0.0.tar.gz
+
+          %description
+          Naqrah - محرر تشكيل النصوص العربية بواجهة رسومية حديثة
+
+          %prep
+          %setup -q
+
+          %install
+          mkdir -p %{buildroot}/usr/bin
+          mkdir -p %{buildroot}/usr/share/applications
+          mkdir -p %{buildroot}/usr/share/icons/hicolor/256x256/apps
+          cp naqrah %{buildroot}/usr/bin/
+          cp naqrah.desktop %{buildroot}/usr/share/applications/
+          cp naqrah.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/
+
+          %files
+          /usr/bin/naqrah
+          /usr/share/applications/naqrah.desktop
+          /usr/share/icons/hicolor/256x256/apps/naqrah.png
+          SPEC
+
+          # إزالة المسافات البادئة
+          sed -i 's/^          //' rpmbuild/SPECS/naqrah.spec
+
+          rpmbuild --define "_topdir $(pwd)/rpmbuild" -bb rpmbuild/SPECS/naqrah.spec
+          find rpmbuild/RPMS -name "*.rpm" -exec cp {} Naqrah-Linux-musl-arm64.rpm \;
+
+      - name: Upload .rpm Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-musl-arm64-rpm
+          path: Naqrah-Linux-musl-arm64.rpm
+
   # ===== ويندوز - مستقل تمامًا عن سلسلة اللينكس (glibc/musl) =====
   build-windows:
     name: Build on windows-latest
@@ -1582,9 +1692,33 @@ jobs:
           name: Naqrah-MacOS-${{ matrix.arch }}-app
           path: Naqrah-MacOS-${{ matrix.arch }}-app.tar.gz
 
+  generate-hashes:
+    name: Generate MD5 Hashes
+    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-linux-packages-musl-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-musl, build-void-glibc-arm64, build-void-musl-arm64, build-alpine-apk, build-android-universal, build-android, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Compute Hashes
+        run: |
+          cd artifacts
+          md5sum * > ../hashes.txt
+          mv ../hashes.txt .
+          cat hashes.txt
+
+      - name: Upload Hashes Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Hashes
+          path: artifacts/hashes.txt
+
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-musl, build-void, build-void-glibc-arm64, build-void-musl-arm64, build-alpine-apk, build-android-universal, build-android, build-macos]
+    needs: [generate-hashes]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -1593,12 +1727,6 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
-
-      - name: Generate Hashes
-        run: |
-          cd artifacts
-          md5sum * > hashes.txt
-          cat hashes.txt
 
       # بيبني 3 جداول (لينكس / أندرويد / ويندوز) بدل جدول واحد طويل، كل خانة
       # فيها حجم الملف نفسه وهو كمان رابط تحميل مباشر. الخانات اللي مفيش
@@ -1660,7 +1788,7 @@ jobs:
             echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
             echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | ----- | $(cell Naqrah-Void-glibc-arm64.xbps) | ----- |"
-            echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | $(cell Naqrah-Void-musl-arm64.xbps) | ----- |"
+            echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | $(cell Naqrah-Linux-musl-arm64.deb) | $(cell Naqrah-Linux-musl-arm64.rpm) | ----- | $(cell Naqrah-Void-musl-arm64.xbps) | ----- |"
             echo ""
 
             echo "### FreeBSD (x86_64)"
@@ -1710,7 +1838,7 @@ jobs:
             echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
             echo "| **glibc** | $(hash_cell naqrah-elf-glibc-arm64) | $(hash_cell Naqrah-Linux-arm64.deb) | $(hash_cell Naqrah-Linux-arm64.rpm) | ----- | $(hash_cell Naqrah-Void-glibc-arm64.xbps) | ----- |"
-            echo "| **musl**  | $(hash_cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | $(hash_cell Naqrah-Void-musl-arm64.xbps) | ----- |"
+            echo "| **musl**  | $(hash_cell naqrah-elf-musllibc-arm64) | $(hash_cell Naqrah-Linux-musl-arm64.deb) | $(hash_cell Naqrah-Linux-musl-arm64.rpm) | ----- | $(hash_cell Naqrah-Void-musl-arm64.xbps) | ----- |"
             echo ""
 
             echo "### FreeBSD (x86_64)"

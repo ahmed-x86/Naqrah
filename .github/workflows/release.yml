@@ -190,7 +190,9 @@ jobs:
             echo "================================="
             
             pkg install -y rust pkgconf gtk3 librsvg2 patchelf
-            pkg install -y webkit2-gtk41 || pkg install -y webkit2-gtk40 || pkg install -y webkit-gtk41 || pkg install -y webkit2-gtk4 || pkg install -y webkit2-gtk3
+            # أسماء باكدجات WebKit على FreeBSD فيها underscore قبل رقم النسخة
+            # (webkit2-gtk_41 مش webkit2-gtk41)، عكس Ubuntu/Debian تماماً
+            pkg install -y webkit2-gtk_41 || pkg install -y webkit2-gtk_40 || pkg install -y webkit2-gtk_60
           run: |
             cargo install tauri-cli --version "^${{ env.TAURI_CLI_VERSION }}" --locked
             cargo tauri build --no-bundle

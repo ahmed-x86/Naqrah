@@ -189,7 +189,10 @@ jobs:
             pkg search webkit | grep gtk || true
             echo "================================="
             
-            pkg install -y rust pkgconf gtk3 librsvg2 patchelf
+            # bzip2 موجودة في نظام FreeBSD الأساسي كمكتبة، لكن من غير ملف
+            # bzip2.pc اللي pkg-config محتاجه (freetype2 بيطلبها). الباكدج
+            # دي بتضيف ملف الـ pkgconfig المفقود بس.
+            pkg install -y rust pkgconf gtk3 librsvg2 patchelf bzip2
             # أسماء باكدجات WebKit على FreeBSD فيها underscore قبل رقم النسخة
             # (webkit2-gtk_41 مش webkit2-gtk41)، عكس Ubuntu/Debian تماماً
             pkg install -y webkit2-gtk_41 || pkg install -y webkit2-gtk_40 || pkg install -y webkit2-gtk_60

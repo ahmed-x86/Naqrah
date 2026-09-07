@@ -1053,8 +1053,8 @@ jobs:
 
   # ===== تغليف حزم Void Linux (بدون بناء) (arm64) =====
   build-void-arm64:
-    name: Build Void Linux Packages (.xbps — glibc, arm64)
-    needs: [build-linux-elf-arm64]
+    name: Build Void Linux Packages (.xbps — glibc + musl, arm64)
+    needs: [build-linux-elf-arm64, build-alpine-elf-arm64]
     runs-on: ubuntu-24.04-arm
     container:
       image: ghcr.io/void-linux/void-glibc-full:latest
@@ -1073,6 +1073,12 @@ jobs:
         with:
           name: Naqrah-Linux-ELF-arm64
           path: void-glibc-src-arm64
+
+      - name: Download musl Binary Artifact (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl-arm64
+          path: void-musl-src-arm64
 
       - name: Prepare Package Root (glibc)
         run: |
@@ -1104,29 +1110,6 @@ jobs:
         with:
           name: Naqrah-Void-glibc-arm64-xbps
           path: Naqrah-Void-glibc-arm64.xbps
-
-  # ===== تغليف حزم Void Linux (بدون بناء) (musl arm64) =====
-  build-void-musl-arm64:
-    name: Build Void Linux Packages (.xbps — musl, arm64)
-    needs: [build-alpine-elf-arm64]
-    runs-on: ubuntu-24.04-arm
-    container:
-      image: ghcr.io/void-linux/void-glibc-full:latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Install Packaging Dependencies
-        run: |
-          xbps-install -Suy xbps
-          xbps-install -Suy
-          xbps-install -y base-devel
-
-      - name: Download musl Binary Artifact (arm64)
-        uses: actions/download-artifact@v4
-        with:
-          name: Naqrah-Linux-ELF-musl-arm64
-          path: void-musl-src-arm64
 
       - name: Prepare Package Root (musl)
         run: |
@@ -1436,61 +1419,66 @@ jobs:
           storeFile=${{ github.workspace }}/naqrah-release.keystore
           EOF
 
-      # الخطوة الحاسمة: Tauri Android CLI مبيربطش keystore.properties بالـ     needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-musl, build-void, build-void-arm64, build-void-musl-arm64, build-alpine-apk, build-android-universal, build-android, build-macos]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      # بيبني 3 جداول (لينكس / أندرويد / ويندوز) بدل جدول واحد طويل، كل خانة
-      # فيها حجم الملف نفسه وهو كمان رابط تحميل مباشر. الخانات اللي مفيش
-      # ليها ملف (زي glibc + apk، لأن أدوات .apk مبنية على Alpine/musl بس)
-      # بتتحط "-----" بدالها.
-      - name: Generate Download Table
-        id: notes
+      # الخطوة الحاسمة: Tauri Android CLI مبيربطش keystore.properties بالـ signing تلقائيًا.
+      # لازم نضيف signingConfigs في build.gradle.kts يدويًا ونربطها بـ buildTypes.release،
+      # وإلا الـ APK هيتبني "unsigned" حتى لو keystore.properties موجود وصحيح.
+      #
+      # الحل: بدل sed اللي ممكن يكرر الـ imports، نقرأ الملف الأصلي ونكتبه من الصفر بشكل آمن.
+      - name: Inject Signing Config into Gradle
         run: |
-          TAG="${{ github.ref_name }}"
-          REPO="${{ github.repository }}"
-          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
+          GRADLE_FILE="gen/android/app/build.gradle.kts"
 
-          # يرجع حجم الملف كرابط تحميل Markdown، أو "-----" لو الملف مش موجود أصلاً
-          cell() {
-            local file="$1"
-            local path="artifacts/${file}"
-            if [ -f "$path" ]; then
-              local size
-              size=$(du -h "$path" | cut -f1 | sed 's/[[:space:]]*//g')
-              echo "[${size}](${BASE_URL}/${file})"
-            else
-              echo "-----"
+          if ! grep -q "keystore.properties" "$GRADLE_FILE"; then
+            # إضافة import java.io.FileInputStream لو مش موجود (java.util.Properties موجود أصلاً من Tauri)
+            if ! grep -q "import java.io.FileInputStream" "$GRADLE_FILE"; then
+              sed -i '1i import java.io.FileInputStream' "$GRADLE_FILE"
             fi
-          }
 
-          {
-            echo "## 📦 Naqrah ${TAG}"
-            echo ""
-            echo "اختر النسخة المناسبة لجهازك من الجدول تحت وحمّلها مباشرة (الحجم نفسه هو رابط التحميل) 👇"
-            echo ""
+            # إضافة import java.util.Properties بس لو مش موجود أصلاً
+            if ! grep -q "import java.util.Properties" "$GRADLE_FILE"; then
+              sed -i '1i import java.util.Properties' "$GRADLE_FILE"
+            fi
 
-            echo "### 🐧 لينكس (x86_64)"
-            echo ""
-            echo "| المكتبة \ الصيغة | ELF | AppImage | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
-            echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|"
-            echo "| **glibc** | $(cell naqrah-elf-glibc) | $(cell Naqrah-Linux-glibc.AppImage) | $(cell Naqrah-Linux.deb) | $(cell Naqrah-Linux.rpm) | $(cell Naqrah-Linux.pkg.tar.zst) | $(cell Naqrah-Void-glibc.xbps) | ----- |"
-            echo "| **musl**  | $(cell naqrah-elf-musllibc) | ----- | $(cell Naqrah-Linux-musl.deb) | $(cell Naqrah-Linux-musl.rpm) | $(cell Naqrah-Linux-musl.pkg.tar.zst) | $(cell Naqrah-Void-musl.xbps) | $(cell Naqrah-Alpine.apk) |"
-            echo ""
+            # إضافة تحميل keystoreProperties قبل بلوك android {
+            sed -i '/^android {/i \
+          val keystorePropertiesFile = rootProject.file("keystore.properties")\
+          val keystoreProperties = Properties()\
+          if (keystorePropertiesFile.exists()) {\
+              keystoreProperties.load(FileInputStream(keystorePropertiesFile))\
+          }\
+          ' "$GRADLE_FILE"
 
-            echo "### 🐧 لينكس (aarch64)"
-            echo ""
-            echo "| المكتبة \ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
-            echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
-            echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | ----- | $(cell Naqrah-Void-glibc-arm64.xbps) | ----- |"
-            echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | $(cell Naqrah-Void-musl-arm64.xbps) | ----- |"
-            echo ""�ط فيه اسم المعمارية عشان يبقى واضح للمستخدم وهو بيحمّل
+            # إضافة signingConfigs جوه بلوك android { بعد أول سطر مباشرة
+            sed -i '/^android {/a \
+              signingConfigs {\
+                  create("release") {\
+                      keyAlias = keystoreProperties["keyAlias"] as String\
+                      keyPassword = keystoreProperties["password"] as String\
+                      storeFile = file(keystoreProperties["storeFile"] as String)\
+                      storePassword = keystoreProperties["password"] as String\
+                  }\
+              }\
+          ' "$GRADLE_FILE"
+
+            # ربط signingConfig بـ buildTypes.release
+            sed -i '/getByName("release")/a \
+                  signingConfig = signingConfigs.getByName("release")' "$GRADLE_FILE"
+          fi
+
+          cat "$GRADLE_FILE"
+
+      # --target هنا بيخلي Tauri يبني معمارية واحدة بس (بتاعة الـ matrix الحالية)
+      - name: Build APK
+        env:
+          NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: cargo tauri android build --apk --target ${{ matrix.tauri_target }}
+
+      # تنظيف الملفات الحساسة فورًا بعد البناء
+      - name: Cleanup Keystore
+        if: always()
+        run: rm -f naqrah-release.keystore gen/android/keystore.properties
+
+      # اسم الملف بيتحط فيه اسم المعمارية عشان يبقى واضح للمستخدم وهو بيحمّل
       - name: Find and Copy APK
         run: |
           find gen/android/app/build/outputs/apk -name "*release*.apk" ! -name "*unsigned*" -exec cp {} Naqrah-Android-${{ matrix.arch }}.apk \;
@@ -1633,7 +1621,7 @@ jobs:
             echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
             echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | ----- | $(cell Naqrah-Void-glibc-arm64.xbps) | ----- |"
-            echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | ----- | ----- |"
+            echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | $(cell Naqrah-Void-musl-arm64.xbps) | ----- |"
             echo ""
 
             echo "### FreeBSD (x86_64)"

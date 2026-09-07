@@ -1,4 +1,6 @@
 const { invoke } = window.__TAURI__.core;
+const { load } = window.__TAURI__.store;
+
 const inputText = document.getElementById('inputText');
 const btnStartTashkeel = document.getElementById('btnStartTashkeel');
 const lblCurrentWord = document.getElementById('currentWordLabel');
@@ -20,25 +22,34 @@ const toggleSkipShadda = document.getElementById('toggleSkipShadda');
 const toggleMarkShadda = document.getElementById('toggleMarkShadda');
 const stripDiacriticsSubOptions = document.getElementById('stripDiacriticsSubOptions');
 
-// ===== تحميل الإعدادات من localStorage =====
-function loadSettings() {
+// ===== إعداد Store =====
+let settingsStore = null;
+
+async function initStore() {
+    // ملف الإعدادات سيحفظ تلقائياً في مسار التطبيق في النظام
+    settingsStore = await load('settings.json', { autoSave: true });
+    await loadSettings();
+}
+
+// ===== تحميل الإعدادات من Store =====
+async function loadSettings() {
     // الثيم
-    const theme = localStorage.getItem('naqrah-theme') || 'dark';
+    const theme = (await settingsStore.get('naqrah-theme')) ?? 'dark';
     applyTheme(theme);
 
     // خيارات التشكيل — الافتراضي: أخذه بدون تشكيل
-    const savedMode = localStorage.getItem('naqrah-diacritics-mode');
+    const savedMode = await settingsStore.get('naqrah-diacritics-mode');
     const diacriticsMode = (savedMode === 'strip' || savedMode === 'keep') ? savedMode : 'strip';
     applyDiacriticsMode(diacriticsMode);
 
     // خيارات الشدة — الافتراضي: تجاوز الشدة
-    const savedShadda = localStorage.getItem('naqrah-shadda-mode');
+    const savedShadda = await settingsStore.get('naqrah-shadda-mode');
     const shaddaMode = (savedShadda === 'skip' || savedShadda === 'mark') ? savedShadda : 'skip';
     applyShaddaMode(shaddaMode);
 }
 
 // ===== الثيم =====
-function applyTheme(theme) {
+async function applyTheme(theme) {
     if (theme === 'light') {
         document.body.classList.add('light');
         btnThemeLight.classList.add('active');
@@ -48,7 +59,7 @@ function applyTheme(theme) {
         btnThemeDark.classList.add('active');
         btnThemeLight.classList.remove('active');
     }
-    localStorage.setItem('naqrah-theme', theme);
+    if (settingsStore) await settingsStore.set('naqrah-theme', theme);
 }
 
 btnThemeLight.addEventListener('click', () => applyTheme('light'));
@@ -70,7 +81,7 @@ navItems.forEach(item => {
 });
 
 // ===== خيارات التشكيل (Radio: دائماً واحد مفعّل) =====
-function applyDiacriticsMode(mode) {
+async function applyDiacriticsMode(mode) {
     if (mode === 'strip') {
         toggleStripDiacritics.checked = true;
         toggleKeepDiacritics.checked = false;
@@ -80,19 +91,14 @@ function applyDiacriticsMode(mode) {
         toggleKeepDiacritics.checked = true;
         stripDiacriticsSubOptions.classList.remove('visible');
     }
-    localStorage.setItem('naqrah-diacritics-mode', mode);
+    if (settingsStore) await settingsStore.set('naqrah-diacritics-mode', mode);
 }
 
-toggleStripDiacritics.addEventListener('change', () => {
-    applyDiacriticsMode('strip');
-});
-
-toggleKeepDiacritics.addEventListener('change', () => {
-    applyDiacriticsMode('keep');
-});
+toggleStripDiacritics.addEventListener('change', () => applyDiacriticsMode('strip'));
+toggleKeepDiacritics.addEventListener('change', () => applyDiacriticsMode('keep'));
 
 // ===== خيارات الشدة (Radio: دائماً واحد مفعّل) =====
-function applyShaddaMode(mode) {
+async function applyShaddaMode(mode) {
     if (mode === 'skip') {
         toggleSkipShadda.checked = true;
         toggleMarkShadda.checked = false;
@@ -100,16 +106,11 @@ function applyShaddaMode(mode) {
         toggleSkipShadda.checked = false;
         toggleMarkShadda.checked = true;
     }
-    localStorage.setItem('naqrah-shadda-mode', mode);
+    if (settingsStore) await settingsStore.set('naqrah-shadda-mode', mode);
 }
 
-toggleSkipShadda.addEventListener('change', () => {
-    applyShaddaMode('skip');
-});
-
-toggleMarkShadda.addEventListener('change', () => {
-    applyShaddaMode('mark');
-});
+toggleSkipShadda.addEventListener('change', () => applyShaddaMode('skip'));
+toggleMarkShadda.addEventListener('change', () => applyShaddaMode('mark'));
 
 // ===== منطق التشكيل الأصلي =====
 btnStartTashkeel.addEventListener('click', async () => {
@@ -142,7 +143,7 @@ markButtons.forEach(btn => {
     });
 });
 
-// هنا تم التعديل: إزالة الإشعار المزعج وتغيير نص الزر مؤقتاً
+// إزالة الإشعار المزعج وتغيير نص الزر مؤقتاً
 btnCopy.addEventListener('click', async () => {
     const text = outputText.value;
     if (!text) return; // لا تفعل شيئاً إذا كان المربع فارغاً
@@ -198,5 +199,5 @@ function renderState(state) {
     }
 }
 
-// ===== تحميل الإعدادات عند بدء التشغيل =====
-loadSettings();
+// ===== بدء التشغيل وتهيئة Store =====
+initStore();

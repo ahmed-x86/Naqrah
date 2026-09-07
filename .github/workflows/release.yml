@@ -172,12 +172,17 @@ jobs:
       - name: Build inside FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.2"
+          release: "14.3"
           usesh: true
           copyback: true
           prepare: |
             mkdir -p /usr/local/etc/pkg/repos
             echo 'FreeBSD: { url: "pkg+http://pkg.FreeBSD.org/${ABI}/latest" }' > /usr/local/etc/pkg/repos/FreeBSD.conf
+            # لو نسخة الـ VM لسه أقدم من الحزم على "latest" (بيحصل لما FreeBSD
+            # تصدّر نسخة نقطية جديدة وريبو latest يتحدث قبل ما صورة الـ action
+            # تتحدث)، ده بيمنع pkg إنه يرفض التحديث بسبب فحص ABI الصارم.
+            export IGNORE_OSVERSION=yes
+            export ASSUME_ALWAYS_YES=yes
             pkg update -f
             
             echo "=== Available WebKit Packages ==="

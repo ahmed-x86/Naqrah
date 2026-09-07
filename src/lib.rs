@@ -264,6 +264,7 @@ fn advance_char(state: State<'_, Mutex<AppState>>) -> RenderState {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::default().build()) // السطر المُضاف
         .manage(Mutex::new(AppState::default()))
         .invoke_handler(tauri::generate_handler![
             start_tashkeel,

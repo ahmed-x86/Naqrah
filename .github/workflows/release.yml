@@ -189,13 +189,39 @@ jobs:
             pkg search webkit | grep gtk || true
             echo "================================="
             
-            # bzip2 موجودة في نظام FreeBSD الأساسي كمكتبة، لكن من غير ملف
-            # bzip2.pc اللي pkg-config محتاجه (freetype2 بيطلبها). الباكدج
-            # دي بتضيف ملف الـ pkgconfig المفقود بس.
+            # bzip2 موجودة في نظام FreeBSD الأساسي كمكتبة، لكن باكدج
+            # archivers/bzip2 نفسها (اللي بنثبتها من pkg) للأسف مفيهاش ملف
+            # bzip2.pc خالص (اتأكدنا من pkg-plist الرسمي بتاعها) - يعني تثبيت
+            # الباكدج وحده مش هيحل المشكلة. و freetype2 (اللي gdk-3.0 بيعتمد
+            # عليها) بيحط "bzip2" في Requires.private بتاعته، فـ pkg-config
+            # بيفشل تمامًا وهو بيحاول يحل شجرة الاعتماديات، حتى لو إحنا
+            # طالبين cflags/libs بتاعة gdk-3.0 بس. الحل: نفتعل ملف bzip2.pc
+            # بسيط يدويًا يأشر على libbz2 اللي فعلاً موجودة بعد تثبيت الباكدج.
             pkg install -y rust pkgconf gtk3 librsvg2 patchelf bzip2
+
+            install -d /usr/local/libdata/pkgconfig
+            cat > /usr/local/libdata/pkgconfig/bzip2.pc << 'EOF'
+            prefix=/usr/local
+            exec_prefix=${prefix}
+            libdir=${exec_prefix}/lib
+            includedir=${prefix}/include
+
+            Name: bzip2
+            Description: bzip2 compression library
+            Version: 1.0.8
+            Libs: -L${libdir} -lbz2
+            Cflags: -I${includedir}
+            EOF
+
+            # فحص سريع يفشل هنا في prepare لو الملف غلط، بدل ما يفشل بعد
+            # نص ساعة بناء جوه cargo build.
+            pkg-config --exists bzip2 && echo "bzip2.pc OK: $(pkg-config --modversion bzip2)"
+
             # أسماء باكدجات WebKit على FreeBSD فيها underscore قبل رقم النسخة
             # (webkit2-gtk_41 مش webkit2-gtk41)، عكس Ubuntu/Debian تماماً
             pkg install -y webkit2-gtk_41 || pkg install -y webkit2-gtk_40 || pkg install -y webkit2-gtk_60
+
+            pkg-config --cflags --libs gdk-3.0
           # استخدمنا "cargo build" مباشرة بدل "cargo tauri build --no-bundle".
           # السبب: tauri-cli بيعتمد داخليًا على مكتبة cargo-mobile2 (لدعم
           # أندرويد/iOS)، وهي رسميًا مش بتدعم FreeBSD كنظام مضيف (host) خالص -
@@ -204,6 +230,7 @@ jobs:
           # بما إننا أصلاً --no-bundle (باينري خام من غير تغليف)، مش محتاجين
           # الـ CLI خالص؛ مكتبة tauri (عبر build.rs) كفاية لبناء الباينري.
           run: |
+            export PKG_CONFIG_PATH="/usr/local/libdata/pkgconfig:/usr/libdata/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
             cargo build --release
             cp target/release/naqrah naqrah-elf-freebsd-x86_64
 

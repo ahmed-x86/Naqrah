@@ -1051,6 +1051,60 @@ jobs:
           name: Naqrah-Void-musl-xbps
           path: Naqrah-Void-musl.xbps
 
+  # ===== تغليف حزم Void Linux (بدون بناء) (arm64) =====
+  build-void-arm64:
+    name: Build Void Linux Packages (.xbps — glibc, arm64)
+    needs: [build-linux-elf-arm64]
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: ghcr.io/void-linux/void-glibc-full:latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Packaging Dependencies
+        run: |
+          xbps-install -Suy xbps
+          xbps-install -Suy
+          xbps-install -y base-devel
+
+      - name: Download glibc Binary Artifact (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-arm64
+          path: void-glibc-src-arm64
+
+      - name: Prepare Package Root (glibc)
+        run: |
+          PKG_ROOT="void-pkg-root"
+          mkdir -p "${PKG_ROOT}/usr/bin"
+          mkdir -p "${PKG_ROOT}/usr/share/applications"
+          mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps"
+
+          cp void-glibc-src-arm64/naqrah-elf-glibc-arm64 "${PKG_ROOT}/usr/bin/naqrah"
+          chmod +x "${PKG_ROOT}/usr/bin/naqrah"
+          cp naqrah.desktop "${PKG_ROOT}/usr/share/applications/"
+          cp iconn.png "${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+
+      - name: Build glibc .xbps Package with xbps-create
+        run: |
+          xbps-create \
+            -A aarch64 \
+            -n naqrah-1.0.0_1 \
+            -s "Arabic text diacritics (Tashkeel) editor" \
+            --license GPL \
+            --homepage "https://github.com/ahmed-x86/Naqrah" \
+            --maintainer "ahmed-x86" \
+            void-pkg-root
+
+          mv naqrah-1.0.0_1.aarch64.xbps Naqrah-Void-glibc-arm64.xbps
+
+      - name: Upload Void glibc Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Void-glibc-arm64-xbps
+          path: Naqrah-Void-glibc-arm64.xbps
+
   # ملاحظة: الـ job ده بيشتغل على ubuntu-latest برضو، لكن ده مش تكرار لبناء Linux desktop.
   # ubuntu هنا مجرد "runner" (بيئة تشغيل) لبناء APK الأندرويد عن طريق NDK + Tauri Android.
   # الناتج هنا (.apk) مختلف تمامًا عن ناتج build-linux-elf / build-windows (ELF / .zip).
@@ -1477,7 +1531,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-musl, build-void, build-alpine-apk, build-android-universal, build-android, build-macos]
+    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-musl, build-void, build-void-arm64, build-alpine-apk, build-android-universal, build-android, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
     steps:
@@ -1529,7 +1583,7 @@ jobs:
             echo ""
             echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
-            echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | ----- | ----- | ----- |"
+            echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | ----- | $(cell Naqrah-Void-glibc-arm64.xbps) | ----- |"
             echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | ----- | ----- | ----- | ----- | ----- |"
             echo ""
 

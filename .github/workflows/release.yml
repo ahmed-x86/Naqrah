@@ -1013,6 +1013,13 @@ jobs:
         run: |
           pacman-key --init
           pacman-key --populate archlinuxarm || true
+          # pacman 7.x بيفعّل Landlock sandboxing افتراضيًا وقت تحميل الحزم
+          # (بيحول العملية ليوزر مقيد اسمه alpm جوه sandbox معزول بالكيرنل).
+          # الميزة دي بتتعارض مع Docker على GitHub-hosted runners، لأن الـ
+          # seccomp profile الافتراضي لـ Docker بيمنع syscalls بتاعة Landlock،
+          # فبتفشل بـ "Operation not permitted" وأي pacman -S بعدها بتفشل.
+          # الحل الرسمي المتاح في pacman نفسه: تعطيل الـ sandbox من الإعدادات.
+          sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
           pacman -Syu --noconfirm --needed sudo base-devel
 
       - name: Checkout Code
@@ -1152,6 +1159,9 @@ jobs:
         run: |
           pacman-key --init
           pacman-key --populate archlinuxarm || true
+          # نفس السبب زي نسخة glibc arm64: تعطيل Landlock sandbox بتاع pacman
+          # 7.x عشان بيتعارض مع Docker على GitHub-hosted runners
+          sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
           pacman -Syu --noconfirm --needed sudo base-devel
 
       - name: Checkout Code

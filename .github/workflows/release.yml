@@ -1135,6 +1135,75 @@ jobs:
           name: Naqrah-Linux-musl-pkg
           path: Naqrah-Linux-musl.pkg.tar.zst
 
+  build-arch-musl-arm64:
+    name: Build Arch Package (PKGBUILD — musl, arm64)
+    needs: build-alpine-elf-arm64
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: agners/archlinuxarm
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download musl Binary Artifact (arm64)
+        uses: actions/download-artifact@v4
+        with:
+          name: Naqrah-Linux-ELF-musl-arm64
+          path: elf-src
+
+      - name: Install Packaging Dependencies
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinuxarm || true
+          pacman -Syu --noconfirm --needed sudo base-devel
+
+      - name: Create Non-root Build User
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Prepare PKGBUILD Sources
+        run: |
+          mkdir -p arch-pkg
+          cp elf-src/naqrah-elf-musllibc-arm64 arch-pkg/naqrah
+          chmod +x arch-pkg/naqrah
+          cp naqrah.desktop arch-pkg/naqrah.desktop
+          cp iconn.png arch-pkg/naqrah.png
+
+          cat > arch-pkg/PKGBUILD <<'EOF'
+          pkgname=naqrah
+          pkgver=1.0.0
+          pkgrel=1
+          pkgdesc="Arabic text diacritics (Tashkeel) editor (musl build) - محرر تشكيل النصوص العربية"
+          arch=('aarch64')
+          url="https://github.com/ahmed-x86/Naqrah"
+          license=('GPL')
+          depends=('webkit2gtk-4.1' 'gtk3')
+          source=("naqrah" "naqrah.desktop" "naqrah.png")
+          sha256sums=('SKIP' 'SKIP' 'SKIP')
+
+          package() {
+              install -Dm755 "${srcdir}/naqrah" "${pkgdir}/usr/bin/naqrah"
+              install -Dm644 "${srcdir}/naqrah.desktop" "${pkgdir}/usr/share/applications/naqrah.desktop"
+              install -Dm644 "${srcdir}/naqrah.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/naqrah.png"
+          }
+          EOF
+          sed -i 's/^          //' arch-pkg/PKGBUILD
+
+      - name: Build Package with makepkg -s
+        run: |
+          chown -R builder:builder arch-pkg
+          cd arch-pkg
+          su builder -c "makepkg -s --noconfirm"
+          mv naqrah-1.0.0-1-aarch64.pkg.tar.zst ../Naqrah-Linux-musl-arm64.pkg.tar.zst
+
+      - name: Upload Arch Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Naqrah-Linux-musl-arm64-pkg
+          path: Naqrah-Linux-musl-arm64.pkg.tar.zst
+
   # ===== تغليف حزم Void Linux (بدون بناء) =====
   # بيستنى الباينري الجاهز بس من build-linux-elf (glibc) و build-alpine-elf (musl)،
   # مش لازم ينتظر تغليف deb/rpm ولا حزمة .apk ولا بناء ويندوز
@@ -1763,7 +1832,7 @@ jobs:
 
   generate-hashes:
     name: Generate MD5 Hashes
-    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-linux-packages-musl-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-arm64, build-arch-musl, build-void-glibc-arm64, build-void-musl-arm64, build-alpine-apk, build-android-universal, build-android, build-macos]
+    needs: [build-linux-packages, build-linux-packages-musl, build-linux-elf-arm64, build-linux-packages-arm64, build-alpine-elf-arm64, build-linux-packages-musl-arm64, build-freebsd-elf, build-windows, build-arch, build-arch-arm64, build-arch-musl, build-arch-musl-arm64, build-void-glibc-arm64, build-void-musl-arm64, build-alpine-apk, build-android-universal, build-android, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -1857,7 +1926,7 @@ jobs:
             echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
             echo "| **glibc** | $(cell naqrah-elf-glibc-arm64) | $(cell Naqrah-Linux-arm64.deb) | $(cell Naqrah-Linux-arm64.rpm) | $(cell Naqrah-Linux-arm64.pkg.tar.zst) | $(cell Naqrah-Void-glibc-arm64.xbps) | ----- |"
-            echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | $(cell Naqrah-Linux-musl-arm64.deb) | $(cell Naqrah-Linux-musl-arm64.rpm) | ----- | $(cell Naqrah-Void-musl-arm64.xbps) | ----- |"
+            echo "| **musl**  | $(cell naqrah-elf-musllibc-arm64) | $(cell Naqrah-Linux-musl-arm64.deb) | $(cell Naqrah-Linux-musl-arm64.rpm) | $(cell Naqrah-Linux-musl-arm64.pkg.tar.zst) | $(cell Naqrah-Void-musl-arm64.xbps) | ----- |"
             echo ""
 
             echo "### FreeBSD (x86_64)"
@@ -1907,7 +1976,7 @@ jobs:
             echo "| المكتبة \\ الصيغة | ELF | .deb | .rpm | .pkg.tar.zst | .xbps | .apk |"
             echo "|:---|:---:|:---:|:---:|:---:|:---:|:---:|"
             echo "| **glibc** | $(hash_cell naqrah-elf-glibc-arm64) | $(hash_cell Naqrah-Linux-arm64.deb) | $(hash_cell Naqrah-Linux-arm64.rpm) | $(hash_cell Naqrah-Linux-arm64.pkg.tar.zst) | $(hash_cell Naqrah-Void-glibc-arm64.xbps) | ----- |"
-            echo "| **musl**  | $(hash_cell naqrah-elf-musllibc-arm64) | $(hash_cell Naqrah-Linux-musl-arm64.deb) | $(hash_cell Naqrah-Linux-musl-arm64.rpm) | ----- | $(hash_cell Naqrah-Void-musl-arm64.xbps) | ----- |"
+            echo "| **musl**  | $(hash_cell naqrah-elf-musllibc-arm64) | $(hash_cell Naqrah-Linux-musl-arm64.deb) | $(hash_cell Naqrah-Linux-musl-arm64.rpm) | $(hash_cell Naqrah-Linux-musl-arm64.pkg.tar.zst) | $(hash_cell Naqrah-Void-musl-arm64.xbps) | ----- |"
             echo ""
 
             echo "### FreeBSD (x86_64)"

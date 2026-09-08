@@ -22,6 +22,13 @@ const toggleSkipShadda = document.getElementById('toggleSkipShadda');
 const toggleMarkShadda = document.getElementById('toggleMarkShadda');
 const stripDiacriticsSubOptions = document.getElementById('stripDiacriticsSubOptions');
 
+// ===== عناصر تجاوز الأحرف =====
+const selEnglishChars = document.getElementById('selEnglishChars');
+const selArabicNum = document.getElementById('selArabicNum');
+const selHindiNum = document.getElementById('selHindiNum');
+const selEmoji = document.getElementById('selEmoji');
+const selOtherChars = document.getElementById('selOtherChars');
+
 // ===== إعداد Store =====
 let settingsStore = null;
 
@@ -46,6 +53,20 @@ async function loadSettings() {
     const savedShadda = await settingsStore.get('naqrah-shadda-mode');
     const shaddaMode = (savedShadda === 'skip' || savedShadda === 'mark') ? savedShadda : 'skip';
     applyShaddaMode(shaddaMode);
+
+    // تجاوز الأحرف
+    const loadSelect = async (el, key) => {
+        const val = await settingsStore.get(key);
+        if (val) el.value = val;
+        el.addEventListener('change', async () => {
+            if (settingsStore) await settingsStore.set(key, el.value);
+        });
+    };
+    await loadSelect(selEnglishChars, 'naqrah-skip-english');
+    await loadSelect(selArabicNum, 'naqrah-skip-arabic-num');
+    await loadSelect(selHindiNum, 'naqrah-skip-hindi-num');
+    await loadSelect(selEmoji, 'naqrah-skip-emoji');
+    await loadSelect(selOtherChars, 'naqrah-skip-other');
 }
 
 // ===== الثيم =====
@@ -121,11 +142,22 @@ btnStartTashkeel.addEventListener('click', async () => {
     const skipShadda = toggleSkipShadda.checked;
     const markShadda = toggleMarkShadda.checked;
 
+    const actionEnglish = selEnglishChars.value || 'diacritize';
+    const actionArabicNum = selArabicNum.value || 'diacritize';
+    const actionHindiNum = selHindiNum.value || 'diacritize';
+    const actionEmoji = selEmoji.value || 'diacritize';
+    const actionOther = selOtherChars.value || 'diacritize';
+
     const state = await invoke('start_tashkeel', {
         text,
         keepDiacritics: isKeepMode,
         skipShadda,
-        markShadda
+        markShadda,
+        actionEnglish,
+        actionArabicNum,
+        actionHindiNum,
+        actionEmoji,
+        actionOther
     });
     renderState(state);
 });

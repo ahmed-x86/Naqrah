@@ -1005,6 +1005,16 @@ jobs:
     container:
       image: agners/archlinuxarm
     steps:
+      # لازم نعمل الخطوة دي قبل الـ Checkout عشان صورة agners/archlinuxarm
+      # مجردة (minimal) ومفيهاش tar ولا git، وactions/checkout بيحتاج tar
+      # يفك الأرشيف اللي بيحمله عن طريق GitHub REST API (بما إن git مش موجودة).
+      # من غير الخطوة دي، الـ checkout بيفشل بـ "Unable to locate executable file: tar"
+      - name: Install Packaging Dependencies
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinuxarm || true
+          pacman -Syu --noconfirm --needed sudo base-devel
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -1013,12 +1023,6 @@ jobs:
         with:
           name: Naqrah-Linux-ELF-arm64
           path: elf-src
-
-      - name: Install Packaging Dependencies
-        run: |
-          pacman-key --init
-          pacman-key --populate archlinuxarm || true
-          pacman -Syu --noconfirm --needed sudo base-devel
 
       - name: Create Non-root Build User
         run: |
@@ -1142,6 +1146,14 @@ jobs:
     container:
       image: agners/archlinuxarm
     steps:
+      # نفس السبب زي نسخة glibc arm64: لازم نجيب tar قبل الـ checkout
+      # عشان صورة agners/archlinuxarm ملهاش tar ولا git افتراضيًا
+      - name: Install Packaging Dependencies
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinuxarm || true
+          pacman -Syu --noconfirm --needed sudo base-devel
+
       - name: Checkout Code
         uses: actions/checkout@v4
 
@@ -1150,12 +1162,6 @@ jobs:
         with:
           name: Naqrah-Linux-ELF-musl-arm64
           path: elf-src
-
-      - name: Install Packaging Dependencies
-        run: |
-          pacman-key --init
-          pacman-key --populate archlinuxarm || true
-          pacman -Syu --noconfirm --needed sudo base-devel
 
       - name: Create Non-root Build User
         run: |
